@@ -1,5 +1,7 @@
-from sqlalchemy import Boolean, Column, DateTime, Float, String, Text, func
-from sqlalchemy.orm import DeclarativeBase
+from datetime import datetime
+
+from sqlalchemy import DateTime, Float, String, Text, func
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
 class Base(DeclarativeBase):
@@ -9,25 +11,25 @@ class Base(DeclarativeBase):
 class User(Base):
     __tablename__ = "users"
 
-    id = Column(String, primary_key=True)
-    email = Column(String, unique=True, index=True)
-    hashed_password = Column(String)
-    is_active = Column(Boolean, default=True)
-    tier = Column(String, default="free")
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    email: Mapped[str] = mapped_column(String, unique=True, index=True)
+    hashed_password: Mapped[str | None] = mapped_column(String)
+    is_active: Mapped[bool] = mapped_column(default=True)
+    tier: Mapped[str] = mapped_column(default="free")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class SavedItem(Base):
     __tablename__ = "saved_items"
 
-    id = Column(String, primary_key=True)
-    user_id = Column(String, index=True)
-    description = Column(Text)
-    category = Column(String)
-    confidence = Column(Float)
-    raw_text = Column(Text, nullable=True)
-    product_links_json = Column(Text, default="[]")
-    streaming_links_json = Column(Text, default="[]")
-    tags_json = Column(Text, default="[]")
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    is_deleted = Column(Boolean, default=False)
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    user_id: Mapped[str] = mapped_column(String, index=True)
+    description: Mapped[str] = mapped_column(Text)
+    category: Mapped[str] = mapped_column(String)
+    confidence: Mapped[float] = mapped_column(Float)
+    raw_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    product_links_json: Mapped[str] = mapped_column(Text, default="[]")
+    streaming_links_json: Mapped[str] = mapped_column(Text, default="[]")
+    tags_json: Mapped[str] = mapped_column(Text, default="[]")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    is_deleted: Mapped[bool] = mapped_column(default=False)
