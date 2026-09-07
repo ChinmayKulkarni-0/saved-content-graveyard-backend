@@ -1,7 +1,10 @@
+import secrets
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 
-from app.core.security import create_access_token, verify_password
+from app.core.config import settings
+from app.core.security import create_access_token
 from app.schemas.auth import Token
 
 router = APIRouter()
@@ -9,9 +12,13 @@ router = APIRouter()
 
 @router.post("/token", response_model=Token)
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
-    # TODO: Implement actual user lookup
-    fake_hashed = "$2b$12$fakehash"
-    if not verify_password(form_data.password, fake_hashed):
+    username_ok = secrets.compare_digest(
+        form_data.username or "", settings.ADMIN_USERNAME
+    )
+    password_ok = secrets.compare_digest(
+        form_data.password or "", settings.ADMIN_PASSWORD
+    )
+    if not (username_ok and password_ok):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",

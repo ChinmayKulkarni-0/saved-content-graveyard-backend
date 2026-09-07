@@ -6,7 +6,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=os.getenv("ENV_FILE", ".env"))
+    model_config = SettingsConfigDict(env_file=os.getenv("ENV_FILE", ".env.dev"))
 
     APP_NAME: str = "Saved Content Graveyard"
     APP_VERSION: str = "0.1.0"
@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     SECRET_KEY: str = "change-me-in-production"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+
+    ADMIN_USERNAME: str = "admin"
+    ADMIN_PASSWORD: str = "admin"
 
     OPENAI_API_KEY: str | None = None
     GOOGLE_VISION_API_KEY: str | None = None
