@@ -14,6 +14,9 @@ class Settings(BaseSettings):
 
     OPENAI_API_KEY: str = ""
     GOOGLE_VISION_API_KEY: str = ""
+    GOOGLE_GEMINI_API_KEY: str = ""
+    GEMINI_MODEL: str = "gemini-2.0-flash"
+    GEMINI_MODEL_FALLBACK: str = "gemini-2.0-flash-lite"
 
     RATE_LIMIT_FREE_TIER: int = 10
     RATE_LIMIT_PRO_TIER: int = 100

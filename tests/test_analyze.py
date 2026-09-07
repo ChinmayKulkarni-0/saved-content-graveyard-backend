@@ -58,11 +58,12 @@ class TestAnalyzeEndpoint:
         )
         assert resp.status_code == 200
         data = resp.json()
-        assert "id" in data
+        assert "type" in data
+        assert "title" in data
         assert "description" in data
         assert "confidence" in data
-        assert "category" in data
-        assert "processing_time_ms" in data
+        assert "links" in data
+        assert "metadata" in data
 
     def test_temp_file_deleted_after_processing(self, client):
         import glob as glob_mod
