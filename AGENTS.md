@@ -47,3 +47,17 @@ Core flow:
   "metadata": {}
 }
 ```
+
+## Coding Standards
+- Use type hints everywhere
+- Prefer Pydantic models for request/response
+- Keep services thin and focused
+- No giant functions
+- Write tests for the AI pipeline and critical paths
+
+## Current Priority Order
+1. Secure image upload + auto-delete
+2. Working /analyze endpoint
+3. Basic vision + description
+4. Product matching
+5. Movie/TV identification + streaming links
