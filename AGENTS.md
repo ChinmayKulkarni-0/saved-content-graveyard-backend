@@ -7,6 +7,7 @@
 - Use structured JSON responses
 - Always include confidence score
 - Rate limit heavily on free tier
+- Follow `api-contract.md` — it is the source of truth for the mobile app. Do not change response shapes without updating it.
 
 # Code Standards
 
