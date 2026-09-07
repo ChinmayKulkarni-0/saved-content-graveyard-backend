@@ -1,26 +1,49 @@
-# Backend Rules
+# AGENTS.md – Backend (Python + FastAPI)
 
-- Stack: Python 3.12+, FastAPI, Pydantic v2, SQLAlchemy 2.0 (or Supabase)
-- Core feature: Receive screenshot → process with vision → return description + buy/stream links
-- Privacy: Process image → generate result → delete original image as fast as possible
-- Never store user screenshots permanently unless user explicitly saves the result
-- Use structured JSON responses
-- Always include confidence score
-- Rate limit heavily on free tier
-- Follow `api-contract.md` — it is the source of truth for the mobile app. Do not change response shapes without updating it.
+## Project Overview
+This is the backend for "Saved Content Graveyard" – an app that turns social media screenshots into actionable results.
 
-# Code Standards
+Core flow:
+1. User shares a screenshot (Instagram, TikTok, Facebook, etc.)
+2. Backend receives the image
+3. AI processes it → short description + relevant links
+4. For products → buy links
+5. For movies/TV → streaming platform links
+6. Original image is deleted as soon as processing is finished (privacy first)
 
-- Type hints on all functions
-- Pydantic models for all request/response schemas
-- Async/await for all I/O operations
-- Proper error handling with HTTPException
-- Environment variables via pydantic-settings
-- Tests for all endpoints
+## Tech Stack (Do not change without discussion)
+- Python 3.12+
+- FastAPI
+- Pydantic v2
+- SQLAlchemy 2.0 or Supabase
+- Google Cloud Vision / Gemini (preferred) or GPT-4o-mini for vision
+- Temporary object storage (S3 / Cloudflare R2 / Supabase Storage)
 
-# Architecture
+## Critical Rules
+- **Privacy is non-negotiable**: Process the image → return result → delete the original image immediately (or within seconds).
+- Never store user screenshots permanently unless the user explicitly saves the result card.
+- Always return structured JSON.
+- Always include a confidence score.
+- Rate limit free users aggressively.
+- Prefer cheaper models first (Gemini Flash / Flash-Lite). Escalate only when necessary.
+- Write clean, typed, well-documented code.
+- Use async where it makes sense.
+- Every endpoint must have proper error handling and logging.
 
-- Clean separation: endpoints → services → models
-- Services handle external API calls (vision, product search, streaming)
-- Endpoints handle HTTP concerns only
-- Use dependency injection for auth and rate limiting
+## Preferred Response Format from AI Pipeline
+```json
+{
+  "type": "product" | "movie" | "tv" | "unknown",
+  "title": "string",
+  "description": "short natural description (1-2 sentences)",
+  "confidence": 0.0-1.0,
+  "links": [
+    {
+      "label": "Buy on Amazon",
+      "url": "https://...",
+      "type": "buy" | "stream" | "info"
+    }
+  ],
+  "metadata": {}
+}
+```
