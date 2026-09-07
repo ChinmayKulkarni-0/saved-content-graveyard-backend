@@ -6,9 +6,9 @@ from app.core.config import settings
 from app.core.logging import ImageAction, log_image_event, logger
 from app.core.rate_limit import rate_limiter
 from app.core.security import get_current_user
-from app.schemas.analysis import AnalysisResult
+from app.schemas.pipeline import PipelineResult
+from app.services.pipeline import ProcessingPipeline
 from app.services.storage import storage_service
-from app.services.vision import VisionService
 
 router = APIRouter()
 
@@ -33,7 +33,7 @@ async def _validate_and_read(file: UploadFile) -> bytes:
     return content
 
 
-@router.post("/", response_model=AnalysisResult)
+@router.post("/", response_model=PipelineResult)
 async def analyze_screenshot(
     request: Request,
     file: UploadFile = File(...),
@@ -53,8 +53,8 @@ async def analyze_screenshot(
 
         log_image_event(ImageAction.PROCESS_START, filename, user_id=current_user)
 
-        vision_service = VisionService()
-        result = await vision_service.analyze_image(tmp_path)
+        pipeline = ProcessingPipeline()
+        result = await pipeline.process_image(tmp_path)
 
         elapsed_ms = (time.perf_counter() - start) * 1000
         log_image_event(
@@ -62,7 +62,7 @@ async def analyze_screenshot(
             filename,
             user_id=current_user,
             duration_ms=elapsed_ms,
-            detail=f"category={result.get('category', 'unknown')}",
+            detail=f"type={result.type.value}",
         )
         return result
 
@@ -87,7 +87,7 @@ async def analyze_screenshot(
             await storage_service.delete_image(tmp_path, user_id=current_user)
 
 
-@router.post("/batch", response_model=list[AnalysisResult])
+@router.post("/batch", response_model=list[PipelineResult])
 async def analyze_batch(
     request: Request,
     files: list[UploadFile] = File(...),
@@ -101,7 +101,7 @@ async def analyze_batch(
             detail=f"Batch size limited to {MAX_BATCH_SIZE} files",
         )
 
-    results: list[AnalysisResult] = []
+    results: list[PipelineResult] = []
     for file in files:
         try:
             content = await _validate_and_read(file)
@@ -111,8 +111,8 @@ async def analyze_batch(
             try:
                 tmp_path = await storage_service.save_temp_image(content, filename, user_id=current_user)
 
-                vision_service = VisionService()
-                result = await vision_service.analyze_image(tmp_path)
+                pipeline = ProcessingPipeline()
+                result = await pipeline.process_image(tmp_path)
                 results.append(result)
             finally:
                 if tmp_path:
