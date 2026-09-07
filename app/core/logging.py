@@ -1,6 +1,30 @@
 import logging
+import sys
 import time
 from enum import Enum
+from pathlib import Path
+
+from app.core.config import settings
+
+
+def setup_logging() -> None:
+    log_level = logging.DEBUG if settings.DEBUG else logging.INFO
+
+    logging.basicConfig(
+        level=log_level,
+        format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        handlers=[logging.StreamHandler(sys.stdout)],
+    )
+
+    logging.getLogger("uvicorn").setLevel(logging.WARNING)
+    logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+    logging.getLogger("sqlalchemy.engine").setLevel(
+        logging.INFO if settings.DEBUG else logging.WARNING
+    )
+
+    for name in ("httpcore", "httpx", "openai", "google"):
+        logging.getLogger(name).setLevel(logging.WARNING)
 
 
 class ImageAction(str, Enum):
@@ -13,7 +37,9 @@ class ImageAction(str, Enum):
     CLEANUP_ORPHAN = "cleanup_orphan"
 
 
-logger = logging.getLogger("image_lifecycle")
+logger = logging.getLogger("app")
+
+image_lifecycle_logger = logging.getLogger("image_lifecycle")
 
 
 def log_image_event(
@@ -48,4 +74,4 @@ def log_image_event(
     if detail:
         msg += f" {detail}"
 
-    logger.info(msg, extra=extra)
+    image_lifecycle_logger.info(msg, extra=extra)

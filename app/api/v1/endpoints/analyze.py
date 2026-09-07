@@ -1,9 +1,9 @@
 import time
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 
 from app.core.config import settings
-from app.core.logging import ImageAction, log_image_event
+from app.core.logging import ImageAction, log_image_event, logger
 from app.core.rate_limit import rate_limiter
 from app.core.security import get_current_user
 from app.schemas.analysis import AnalysisResult
@@ -19,17 +19,17 @@ MAX_BATCH_SIZE = 5
 async def _validate_and_read(file: UploadFile) -> bytes:
     if not file.content_type or file.content_type not in ALLOWED_CONTENT_TYPES:
         raise HTTPException(
-            status_code=400,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"File must be one of: {', '.join(sorted(ALLOWED_CONTENT_TYPES))}",
         )
     content = await file.read()
     if len(content) > settings.IMAGE_UPLOAD_MAX_SIZE_MB * 1024 * 1024:
         raise HTTPException(
-            status_code=400,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"File exceeds maximum size of {settings.IMAGE_UPLOAD_MAX_SIZE_MB}MB",
         )
     if len(content) == 0:
-        raise HTTPException(status_code=400, detail="File is empty")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="File is empty")
     return content
 
 
@@ -47,7 +47,7 @@ async def analyze_screenshot(
     log_image_event(ImageAction.VALIDATE, filename, user_id=current_user, file_size=len(content))
 
     tmp_path = None
-    start = time.monotonic()
+    start = time.perf_counter()
     try:
         tmp_path = await storage_service.save_temp_image(content, filename, user_id=current_user)
 
@@ -56,7 +56,7 @@ async def analyze_screenshot(
         vision_service = VisionService()
         result = await vision_service.analyze_image(tmp_path)
 
-        elapsed_ms = (time.monotonic() - start) * 1000
+        elapsed_ms = (time.perf_counter() - start) * 1000
         log_image_event(
             ImageAction.PROCESS_COMPLETE,
             filename,
@@ -69,7 +69,7 @@ async def analyze_screenshot(
     except HTTPException:
         raise
     except Exception as e:
-        elapsed_ms = (time.monotonic() - start) * 1000
+        elapsed_ms = (time.perf_counter() - start) * 1000
         log_image_event(
             ImageAction.PROCESS_COMPLETE,
             filename,
@@ -77,7 +77,11 @@ async def analyze_screenshot(
             duration_ms=elapsed_ms,
             detail=f"error={e}",
         )
-        raise HTTPException(status_code=500, detail=f"Analysis failed: {e}")
+        logger.error("Analysis failed: %s", e, exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Image analysis failed. Please try again.",
+        )
     finally:
         if tmp_path:
             await storage_service.delete_image(tmp_path, user_id=current_user)
@@ -91,8 +95,14 @@ async def analyze_batch(
 ):
     await rate_limiter.check_rate_limit(request, tier="free")
 
+    if len(files) > MAX_BATCH_SIZE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Batch size limited to {MAX_BATCH_SIZE} files",
+        )
+
     results: list[AnalysisResult] = []
-    for file in files[:MAX_BATCH_SIZE]:
+    for file in files:
         try:
             content = await _validate_and_read(file)
             filename = file.filename or "upload.png"
@@ -109,6 +119,8 @@ async def analyze_batch(
                     await storage_service.delete_image(tmp_path, user_id=current_user)
         except HTTPException:
             continue
+
+    logger.info("Batch analysis complete: %d/%d succeeded", len(results), len(files))
     return results
 
 
