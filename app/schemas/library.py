@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class SavedItem(BaseModel):
@@ -15,3 +15,13 @@ class SavedItem(BaseModel):
     tags: list[str] = []
     created_at: datetime
     is_deleted: bool = False
+
+
+class SavedItemCreate(BaseModel):
+    description: str
+    category: str
+    confidence: float = Field(ge=0.0, le=1.0)
+    raw_text: str | None = None
+    product_links: list = []
+    streaming_links: list = []
+    tags: list[str] = []

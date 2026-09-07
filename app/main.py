@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.logging import logger, setup_logging
+from app.db.session import init_db
 from app.services.storage import storage_service
 
 _cleanup_task: asyncio.Task | None = None
@@ -31,6 +32,7 @@ async def lifespan(app: FastAPI):
     global _cleanup_task
     setup_logging()
     logger.info("Starting %s v%s", settings.APP_NAME, settings.APP_VERSION)
+    await init_db()
     _cleanup_task = asyncio.create_task(_periodic_cleanup())
     yield
     logger.info("Shutting down %s", settings.APP_NAME)
