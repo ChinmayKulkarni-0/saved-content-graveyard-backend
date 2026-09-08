@@ -1,5 +1,5 @@
 import logging
-import re
+from urllib.parse import quote
 
 from app.schemas.pipeline import Link, LinkType
 
@@ -53,7 +53,7 @@ class ProductService:
                 return [Link(**link) for link in product["links"]]
 
         if title:
-            encoded = re.sub(r"\s+", "+", title)
+            encoded = quote(title.replace(" ", "+"))
             return [
                 Link(
                     label=f"Search for '{title}' on Amazon",

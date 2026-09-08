@@ -1,8 +1,8 @@
 import logging
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -73,13 +73,25 @@ async def save_result(
 async def get_saved_results(
     user: User = Depends(get_current_user_model),
     db: AsyncSession = Depends(get_db),
+    offset: int = Query(0, ge=0, description="Number of items to skip"),
+    limit: int = Query(50, ge=1, le=100, description="Max items to return"),
+    response: Response = None,
 ):
     """List the current user's saved result cards, newest first."""
+    total = await db.scalar(
+        select(func.count()).select_from(SavedResultModel).where(
+            SavedResultModel.user_id == user.id
+        )
+    )
     result = await db.execute(
         select(SavedResultModel)
         .where(SavedResultModel.user_id == user.id)
         .order_by(SavedResultModel.created_at.desc())
+        .offset(offset)
+        .limit(limit)
     )
+    if response is not None:
+        response.headers["X-Total-Count"] = str(total)
     return [to_schema(item) for item in result.scalars().all()]
 
 

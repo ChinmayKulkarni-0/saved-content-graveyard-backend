@@ -1,3 +1,4 @@
+import asyncio
 import os
 import tempfile
 import time
@@ -5,8 +6,6 @@ from pathlib import Path
 
 from app.core.config import settings
 from app.core.logging import ImageAction, log_image_event
-
-MAX_ORPHAN_AGE_SECONDS = 300  # 5 minutes safety net
 
 
 class StorageService:
@@ -19,21 +18,28 @@ class StorageService:
     """
 
     def __init__(self) -> None:
-        self._retention = settings.IMAGE_RETENTION_SECONDS
-        self._tmp_dir = Path(tempfile.gettempdir()) / "scg_uploads"
+        self._retention_seconds = settings.IMAGE_RETENTION_SECONDS
+        self._tmp_dir = Path(settings.IMAGE_TEMP_DIR)
         self._tmp_dir.mkdir(parents=True, exist_ok=True)
         self._active: dict[str, float] = {}  # path → creation timestamp
 
     async def save_temp_image(self, content: bytes, filename: str, user_id: str | None = None) -> str:
         suffix = os.path.splitext(filename or "upload.png")[1] or ".png"
-        fd, path = tempfile.mkstemp(suffix=suffix, dir=str(self._tmp_dir))
-        try:
-            os.write(fd, content)
-            os.close(fd)
-        except Exception:
-            os.close(fd)
-            os.unlink(path)
-            raise
+
+        def _write() -> str:
+            fd, path = tempfile.mkstemp(suffix=suffix, dir=str(self._tmp_dir))
+            try:
+                with os.fdopen(fd, "wb") as f:
+                    f.write(content)
+            except Exception:
+                try:
+                    os.unlink(path)
+                except OSError:
+                    pass
+                raise
+            return path
+
+        path = await asyncio.to_thread(_write)
 
         self._active[path] = time.time()
         log_image_event(
@@ -47,9 +53,16 @@ class StorageService:
 
     async def delete_image(self, path: str, user_id: str | None = None) -> bool:
         filename = os.path.basename(path)
+
+        def _delete() -> bool:
+            if not os.path.exists(path):
+                return False
+            os.unlink(path)
+            return True
+
         try:
-            if os.path.exists(path):
-                os.unlink(path)
+            removed = await asyncio.to_thread(_delete)
+            if removed:
                 log_image_event(
                     ImageAction.DELETE,
                     filename,
@@ -68,33 +81,41 @@ class StorageService:
             return False
 
     async def cleanup_orphans(self) -> int:
-        """Remove temp files older than MAX_ORPHAN_AGE_SECONDS."""
+        """Remove temp files older than IMAGE_RETENTION_SECONDS."""
+        retention = self._retention_seconds
         now = time.time()
-        removed = 0
-        for path in list(self._active.keys()):
-            age = now - self._active[path]
-            if age > MAX_ORPHAN_AGE_SECONDS and await self.delete_image(path):
-                removed += 1
-                log_image_event(
-                    ImageAction.CLEANUP_ORPHAN,
-                    os.path.basename(path),
-                    detail=f"age={age:.0f}s",
-                )
-        # Also sweep the directory for files we lost track of
-        for f in self._tmp_dir.iterdir():
-            if f.is_file():
-                age = now - f.stat().st_mtime
-                if age > MAX_ORPHAN_AGE_SECONDS:
+
+        def _sweep() -> int:
+            removed = 0
+            for path in list(self._active.keys()):
+                age = now - self._active[path]
+                if age > retention:
                     try:
-                        f.unlink()
+                        if os.path.exists(path):
+                            os.unlink(path)
                         removed += 1
-                        log_image_event(
-                            ImageAction.CLEANUP_ORPHAN,
-                            f.name,
-                            detail=f"age={age:.0f}s (orphan sweep)",
-                        )
                     except OSError:
-                        pass
+                        continue
+                    finally:
+                        self._active.pop(path, None)
+            for f in self._tmp_dir.iterdir():
+                if f.is_file():
+                    try:
+                        age = now - f.stat().st_mtime
+                        if age > retention:
+                            f.unlink()
+                            removed += 1
+                    except OSError:
+                        continue
+            return removed
+
+        removed = await asyncio.to_thread(_sweep)
+        if removed:
+            log_image_event(
+                ImageAction.CLEANUP_ORPHAN,
+                "cleanup_sweep",
+                detail=f"removed={removed} files",
+            )
         return removed
 
     @property

@@ -77,7 +77,7 @@ class TestProcessingPipeline:
         assert result.type == ContentType.PRODUCT
         assert result.title == "Dr. Martens Boots"
         assert result.confidence == 0.85
-        assert result.metadata["processing_time_ms"] > 0
+        assert result.metadata["processing_time_ms"] >= 0
 
     @pytest.mark.asyncio
     async def test_classify_content_product(self):

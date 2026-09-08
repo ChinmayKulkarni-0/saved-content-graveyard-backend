@@ -20,6 +20,7 @@ class RateLimiter:
 
     def __init__(self) -> None:
         self._buckets: dict[str, list[float]] = {}
+        self._last_prune = 0.0
 
     def _client_id(self, request: Request) -> str:
         if settings.TRUST_X_FORWARDED_FOR:
@@ -31,15 +32,22 @@ class RateLimiter:
         return request.client.host if request.client else "unknown"
 
     def _prune(self, now: float) -> None:
-        if len(self._buckets) < MAX_BUCKETS:
-            return
-        stale = [
-            key
-            for key, hits in self._buckets.items()
-            if not hits or now - hits[-1] >= DEFAULT_WINDOW_SECONDS
-        ]
-        for key in stale:
-            del self._buckets[key]
+        # Light, periodic cleanup of expired buckets once there are enough of them.
+        if (
+            len(self._buckets) >= 1000
+            and now - self._last_prune >= 5.0
+        ):
+            self._last_prune = now
+            for key in list(self._buckets):
+                hits = self._buckets[key]
+                if not hits or now - hits[-1] >= DEFAULT_WINDOW_SECONDS:
+                    del self._buckets[key]
+
+        # Hard cap: memory must stay bounded even under mass IP spoofing.
+        over = len(self._buckets) - MAX_BUCKETS
+        if over > 0:
+            for key in list(self._buckets)[:over]:
+                del self._buckets[key]
 
     async def check_rate_limit(
         self,

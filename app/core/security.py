@@ -86,3 +86,14 @@ async def get_current_user_model(
         logger.warning("JWT issued for unknown/inactive user=%s", user_uuid)
         raise _credentials_exception()
     return user
+
+
+async def get_admin_user(user: Annotated[User, Depends(get_current_user_model)]) -> User:
+    """Require the configured admin account for sensitive operations."""
+    if user.email != settings.ADMIN_USERNAME:
+        logger.warning("Admin access denied for user=%s", user.id)
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required",
+        )
+    return user

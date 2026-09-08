@@ -18,6 +18,10 @@ DUMMY_USER_PASSWORD = "password123"
 
 async def seed_default_users() -> None:
     """Create the admin (from settings) plus a dummy user if no users exist."""
+    if settings.APP_ENV.lower() == "production":
+        logger.warning("Skipping default user seeding (APP_ENV=production)")
+        return
+
     async with async_session_maker() as session:
         count = (
             await session.execute(select(func.count()).select_from(User))
