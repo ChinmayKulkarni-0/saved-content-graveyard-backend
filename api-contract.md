@@ -85,8 +85,10 @@ The original image is deleted server-side immediately after processing (finally 
 
 `POST /v1/analyze/batch` — multipart form, up to 5 files.
 
-Response `200`: array of up to 5 `PipelineResult` objects (invalid files are
-skipped, not fatal).
+Response `200`: array of up to 5 `AnalyzeResponse` objects (i.e. each includes a
+`saved_id` — same shape as the single `/v1/analyze/` response). Invalid files are
+skipped, not fatal. Each successful card is auto-persisted to the user's library;
+if persisting a card fails, that file is skipped and logged, and the rest continue.
 
 ## Library (result cards)
 

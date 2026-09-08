@@ -175,9 +175,11 @@ async def delete_current_user(
 ):
     """Delete the account and every saved result card, atomically.
 
-    SavedResult rows are removed explicitly first: the FK has no ON DELETE
-    CASCADE, so they must be purged before the user row. Both statements share
-    one transaction — if either fails, nothing is deleted.
+    SavedResult rows are purged explicitly rather than relying on the FK's
+    ON DELETE CASCADE: this keeps cleanup correct even where CASCADE does not
+    fire (e.g. aiosqlite tests run with foreign key enforcement disabled) and
+    makes the transaction self-documenting. Both statements share one
+    transaction — if either fails, nothing is deleted.
 
     Deliberately uses ``get_current_user`` (not ``get_current_active_user``):
     even a deactivated account may be deleted by its owner.

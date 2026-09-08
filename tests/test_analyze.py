@@ -241,7 +241,34 @@ class TestBatchEndpoint:
             headers=_headers(client.normal_user),
         )
         assert resp.status_code == 200
-        assert len(resp.json()) == 2
+        items = resp.json()
+        assert len(items) == 2
+        assert all(item["saved_id"] for item in items)
+
+    async def test_batch_persists_saved_results(self, client):
+        resp = await client.post(
+            "/v1/analyze/batch",
+            files=[("files", ("a.png", PNG_BYTES, "image/png"))],
+            headers=_headers(client.normal_user),
+        )
+        saved_ids = {item["saved_id"] for item in resp.json()}
+        assert saved_ids
+
+        listed = await client.get("/v1/library/", headers=_headers(client.normal_user))
+        assert listed.status_code == 200
+        listed_ids = {item["id"] for item in listed.json()}
+        assert saved_ids.issubset(listed_ids)
+
+    async def test_batch_results_are_user_scoped(self, client):
+        resp = await client.post(
+            "/v1/analyze/batch",
+            files=[("files", ("a.png", PNG_BYTES, "image/png"))],
+            headers=_headers(client.normal_user),
+        )
+        saved_id = resp.json()[0]["saved_id"]
+
+        listed = await client.get("/v1/library/", headers=_headers(client.pro_user))
+        assert all(item["id"] != saved_id for item in listed.json())
 
     async def test_batch_skips_invalid_files(self, client):
         resp = await client.post(
@@ -253,7 +280,9 @@ class TestBatchEndpoint:
             headers=_headers(client.normal_user),
         )
         assert resp.status_code == 200
-        assert len(resp.json()) == 1
+        items = resp.json()
+        assert len(items) == 1
+        assert items[0]["saved_id"]
 
 
 class TestCleanupEndpoint:
