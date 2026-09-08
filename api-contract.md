@@ -119,7 +119,8 @@ their own saved cards.
 
 ## Health
 
-`GET /health` → `{"status": "healthy", "version": "0.1.0"}`
+`GET /health` → `{"status": "healthy", "version": "0.1.0", "database": "ok"}`
+(canary: the database is pinged; `503` with `status: "degraded"` when it is down).
 
 ## Field Conventions
 
