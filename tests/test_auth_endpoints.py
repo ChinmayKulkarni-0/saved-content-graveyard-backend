@@ -47,6 +47,7 @@ async def client():
 
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+        c.maker = maker
         yield c
 
     app.dependency_overrides.clear()
@@ -157,3 +158,105 @@ class TestMe:
             headers={"Authorization": f"Bearer {tampered}"},
         )
         assert resp.status_code == 401
+
+
+class TestDeleteAccount:
+    async def test_delete_account_requires_auth(self, client):
+        resp = await client.delete("/v1/auth/me")
+        assert resp.status_code == 401
+
+    async def test_delete_account_removes_user_and_saved_results(self, client):
+        from sqlalchemy import func, select
+
+        from app.models.user import SavedResult as SavedResultModel
+
+        # Create a fresh user with a saved result card.
+        signup = await client.post(
+            "/v1/auth/signup",
+            json={"email": "delete-me@example.com", "password": PASSWORD},
+        )
+        assert signup.status_code == 201
+        token = signup.json()["access_token"]
+        uid = uuid.UUID(signup.json()["user"]["id"])
+        headers = {"Authorization": f"Bearer {token}"}
+
+        saved = await client.post(
+            "/v1/library/",
+            json={
+                "type": "product",
+                "title": "Old Chair",
+                "description": "To be deleted with the account.",
+                "confidence": 0.9,
+                "links": [],
+                "metadata": {},
+            },
+            headers=headers,
+        )
+        assert saved.status_code == 201
+
+        resp = await client.delete("/v1/auth/me", headers=headers)
+        assert resp.status_code == 200
+        assert resp.json() == {"message": "Account deleted successfully"}
+
+        # User is gone -> a second attempt with the same (still-valid) token 404s.
+        again = await client.delete("/v1/auth/me", headers=headers)
+        assert again.status_code == 404
+
+        # No orphaned saved results remain for the deleted user.
+        async with client.maker() as session:
+            count = await session.scalar(
+                select(func.count()).select_from(SavedResultModel).where(
+                    SavedResultModel.user_id == uid
+                )
+            )
+            assert count == 0
+
+    async def test_delete_account_persists_other_users(self, client):
+        # Deleting one account must not touch anyone else's data.
+        admin_signup = await client.post(
+            "/v1/auth/signup",
+            json={"email": "sibling@example.com", "password": PASSWORD},
+        )
+        other_headers = {
+            "Authorization": f"Bearer {admin_signup.json()['access_token']}"
+        }
+        await client.post(
+            "/v1/library/",
+            json={
+                "type": "tv",
+                "title": "Other User's Show",
+                "description": "Must survive.",
+                "confidence": 0.8,
+                "links": [],
+                "metadata": {},
+            },
+            headers=other_headers,
+        )
+
+        doomed = await client.post(
+            "/v1/auth/signup",
+            json={"email": "doomed@example.com", "password": PASSWORD},
+        )
+        doomed_headers = {"Authorization": f"Bearer {doomed.json()['access_token']}"}
+        await client.post(
+            "/v1/library/",
+            json={
+                "type": "movie",
+                "title": "Doomed Film",
+                "description": "Should disappear.",
+                "confidence": 0.7,
+                "links": [],
+                "metadata": {},
+            },
+            headers=doomed_headers,
+        )
+
+        resp = await client.delete("/v1/auth/me", headers=doomed_headers)
+        assert resp.status_code == 200
+
+        # The other user still sees their saved card.
+        listed = await client.get("/v1/library/", headers=other_headers)
+        assert listed.status_code == 200
+        titles = [item["title"] for item in listed.json()]
+        assert "Other User's Show" in titles
+        assert "Doomed Film" not in titles

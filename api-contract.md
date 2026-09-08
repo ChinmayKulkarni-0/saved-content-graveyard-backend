@@ -13,6 +13,9 @@ JWT Bearer token. `POST /v1/auth/token` is the OAuth2 password flow
 - `POST /v1/auth/signup` — create account → `201` with `{access_token, token_type, user}`
 - `POST /v1/auth/login` — JSON credentials → `200` with `{access_token, token_type, user}`
 - `GET /v1/auth/me` — current user → `200` with `{user}`, `401` if invalid token
+- `DELETE /v1/auth/me` — permanently deletes the account and all saved result
+  cards in one transaction → `200 {"message": "Account deleted successfully"}`;
+  `404` if the token's user no longer exists. The token becomes invalid.
 - `POST /v1/auth/logout` — invalidates the token (stored in a deny list) → `200`
 - `POST /v1/auth/token` — OAuth2 form flow → `{access_token, token_type}`
 

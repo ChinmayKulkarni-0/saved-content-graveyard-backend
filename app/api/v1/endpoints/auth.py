@@ -3,11 +3,12 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.deps import get_current_user
 from app.core.rate_limit import rate_limiter
 from app.core.security import (
     create_access_token,
@@ -16,6 +17,7 @@ from app.core.security import (
     verify_password,
 )
 from app.db.session import get_db
+from app.models.user import SavedResult as SavedResultModel
 from app.models.user import User
 from app.schemas.auth import AuthResponse, LoginRequest, Token, UserCreate, UserPublic
 
@@ -165,3 +167,31 @@ async def read_current_user(
     user: User = Depends(get_current_user_model),
 ):
     return UserPublic.model_validate(user)
+
+
+@router.delete("/me", summary="Delete the current user's account permanently")
+async def delete_current_user(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete the account and every saved result card, atomically.
+
+    SavedResult rows are removed explicitly first: the FK has no ON DELETE
+    CASCADE, so they must be purged before the user row. Both statements share
+    one transaction — if either fails, nothing is deleted.
+    """
+    try:
+        await db.execute(
+            delete(SavedResultModel).where(SavedResultModel.user_id == user.id)
+        )
+        await db.delete(user)
+        await db.commit()
+    except SQLAlchemyError:
+        await db.rollback()
+        logger.exception("Failed to delete account for user=%s", user.id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete the account. Please try again.",
+        )
+    logger.info("Deleted account id=%s email=%s", user.id, user.email)
+    return {"message": "Account deleted successfully"}
