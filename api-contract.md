@@ -12,7 +12,11 @@ JWT Bearer token. `POST /v1/auth/token` is the OAuth2 password flow
 
 - `POST /v1/auth/signup` — create account → `201` with `{access_token, token_type, user}`
 - `POST /v1/auth/login` — JSON credentials → `200` with `{access_token, token_type, user}`
-- `GET /v1/auth/me` — current user → `200` with `{user}`, `401` if invalid token
+- `GET /v1/auth/me` — current user → `200` with `{user}`, `401` if invalid/missing
+  token, `404` if the token references a nonexistent user, `403` if inactive user
+- `DELETE /v1/auth/me` — permanently deletes the account and all saved result
+  cards in one transaction → `200 {"message": "Account deleted successfully"}`;
+  `404` if the token's user no longer exists. The token becomes invalid.
 - `POST /v1/auth/logout` — invalidates the token (stored in a deny list) → `200`
 - `POST /v1/auth/token` — OAuth2 form flow → `{access_token, token_type}`
 
@@ -81,13 +85,16 @@ The original image is deleted server-side immediately after processing (finally 
 
 `POST /v1/analyze/batch` — multipart form, up to 5 files.
 
-Response `200`: array of up to 5 `PipelineResult` objects (invalid files are
-skipped, not fatal).
+Response `200`: array of up to 5 `AnalyzeResponse` objects (i.e. each includes a
+`saved_id` — same shape as the single `/v1/analyze/` response). Invalid files are
+skipped, not fatal. Each successful card is auto-persisted to the user's library;
+if persisting a card fails, that file is skipped and logged, and the rest continue.
 
 ## Library (result cards)
 
 Auth required (`Bearer` token). Ownership enforced: users can only read/delete
-their own saved cards.
+their own saved cards. Auth errors follow the shared convention: `401` invalid/missing
+token, `404` token references a nonexistent user, `403` inactive user.
 
 - `GET /v1/library/?offset=0&limit=50` — newest first; `limit` max 100.
   Response: array of `SavedResult` (see below). `X-Total-Count` header carries

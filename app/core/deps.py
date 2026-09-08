@@ -78,3 +78,16 @@ async def get_current_active_user(
             detail="Inactive user",
         )
     return current_user
+
+
+async def get_admin_user(
+    current_user: Annotated[User, Depends(get_current_active_user)],
+) -> User:
+    """Require the configured admin account for sensitive operations."""
+    if current_user.email != settings.ADMIN_USERNAME:
+        logger.warning("Admin access denied for user=%s", current_user.id)
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required",
+        )
+    return current_user

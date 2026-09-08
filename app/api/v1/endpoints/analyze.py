@@ -5,10 +5,9 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.deps import get_current_active_user
+from app.core.deps import get_admin_user, get_current_active_user
 from app.core.logging import ImageAction, log_image_event, logger
 from app.core.rate_limit import rate_limiter
-from app.core.security import get_admin_user
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.pipeline import AnalyzeResponse, PipelineResult
@@ -144,11 +143,12 @@ async def analyze_screenshot(
                 logger.warning("Failed to delete temp image %s for user=%s", tmp_path, user.id)
 
 
-@router.post("/batch", response_model=list[PipelineResult])
+@router.post("/batch", response_model=list[AnalyzeResponse])
 async def analyze_batch(
     request: Request,
     files: list[UploadFile] = File(...),
     user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
 ):
     await _apply_rate_limit(request, user)
 
@@ -158,7 +158,7 @@ async def analyze_batch(
             detail=f"Batch size limited to {MAX_BATCH_SIZE} files",
         )
 
-    results: list[PipelineResult] = []
+    results: list[AnalyzeResponse] = []
     for file in files:
         filename = file.filename or "upload"
         try:
@@ -166,13 +166,17 @@ async def analyze_batch(
             stored_name = f"upload{_EXT_BY_MIME[mime]}"
             tmp_path = await storage_service.save_temp_image(content, stored_name, user_id=str(user.id))
 
+            result: PipelineResult | None = None
             try:
                 pipeline = ProcessingPipeline()
-                results.append(await pipeline.process_image(tmp_path))
+                result = await pipeline.process_image(tmp_path)
             finally:
                 deleted = await storage_service.delete_image(tmp_path, user_id=str(user.id))
                 if not deleted:
                     logger.warning("Failed to delete temp image %s for user=%s", tmp_path, user.id)
+
+            saved = await save_result(db, user, result)
+            results.append(AnalyzeResponse(saved_id=saved.id, **result.model_dump()))
         except HTTPException as exc:
             logger.info("Batch skipped invalid file %r: %s", filename, exc.detail)
             continue
