@@ -6,7 +6,8 @@ from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.openapi.docs import get_swagger_ui_html
+from fastapi.responses import HTMLResponse, JSONResponse
 from sqlalchemy import text
 
 from app.api.v1.router import api_router
@@ -52,10 +53,19 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
-    docs_url="/docs",
+    docs_url=None,
     redoc_url="/redoc",
     lifespan=lifespan,
 )
+
+
+@app.get("/docs", include_in_schema=False)
+async def swagger_ui_html():
+    html = get_swagger_ui_html(
+        openapi_url=app.openapi_url,
+        title=f"{settings.APP_NAME} - Swagger UI",
+    ).body
+    return HTMLResponse(html.replace(b"<html>", b'<html class="dark-mode">'))
 
 app.add_middleware(
     CORSMiddleware,
