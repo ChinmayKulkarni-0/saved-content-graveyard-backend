@@ -1,11 +1,15 @@
+import logging
 from datetime import datetime, timedelta, timezone
+from typing import Annotated
 
+import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from jose import JWTError, jwt
 from passlib.context import CryptContext
 
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/v1/auth/token")
@@ -20,6 +24,7 @@ def get_password_hash(password: str) -> str:
 
 
 def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
+    """Create a signed JWT. The algorithm is pinned to HS256, preventing key confusion."""
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + (
         expires_delta or timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -28,7 +33,8 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None) -> s
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 
-async def get_current_user(token: str = Depends(oauth2_scheme)):
+async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]) -> str:
+    """Validate the bearer token and return the user id encoded in `sub`."""
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -36,11 +42,17 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
     )
     try:
         payload = jwt.decode(
-            token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM]
+            token,
+            settings.SECRET_KEY,
+            algorithms=[settings.ALGORITHM],
+            options={"require": ["exp", "sub"]},
         )
-        user_id: str = payload.get("sub")
-        if user_id is None:
-            raise credentials_exception
-        return user_id
-    except JWTError:
+    except jwt.PyJWTError:
+        logger.warning("Rejected invalid JWT")
         raise credentials_exception
+
+    sub = payload.get("sub")
+    if not isinstance(sub, str) or not sub:
+        logger.warning("Rejected JWT without a valid sub claim")
+        raise credentials_exception
+    return sub

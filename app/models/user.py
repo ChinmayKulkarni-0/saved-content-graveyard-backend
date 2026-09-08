@@ -1,6 +1,7 @@
+import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, String, Text, func
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, Text, Uuid, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -11,25 +12,34 @@ class Base(DeclarativeBase):
 class User(Base):
     __tablename__ = "users"
 
-    id: Mapped[str] = mapped_column(String, primary_key=True)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
     email: Mapped[str] = mapped_column(String, unique=True, index=True)
-    hashed_password: Mapped[str | None] = mapped_column(String)
-    is_active: Mapped[bool] = mapped_column(default=True)
-    tier: Mapped[str] = mapped_column(default="free")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    hashed_password: Mapped[str] = mapped_column(String)
+    full_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    free_usage_count: Mapped[int] = mapped_column(Integer, default=0)
+    usage_month: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    is_pro: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
-class SavedItem(Base):
-    __tablename__ = "saved_items"
+class SavedResult(Base):
+    __tablename__ = "saved_results"
 
-    id: Mapped[str] = mapped_column(String, primary_key=True)
-    user_id: Mapped[str] = mapped_column(String, index=True)
-    description: Mapped[str] = mapped_column(Text)
-    category: Mapped[str] = mapped_column(String)
-    confidence: Mapped[float] = mapped_column(Float)
-    raw_text: Mapped[str | None] = mapped_column(Text, nullable=True)
-    product_links_json: Mapped[str] = mapped_column(Text, default="[]")
-    streaming_links_json: Mapped[str] = mapped_column(Text, default="[]")
-    tags_json: Mapped[str] = mapped_column(Text, default="[]")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    is_deleted: Mapped[bool] = mapped_column(default=False)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), index=True)
+    type: Mapped[str] = mapped_column(String, default="unknown")
+    title: Mapped[str] = mapped_column(String, default="")
+    description: Mapped[str] = mapped_column(Text, default="")
+    confidence: Mapped[float] = mapped_column(Float, default=0.0)
+    links: Mapped[list] = mapped_column(JSON, default=list)
+    metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    thumbnail_url: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )

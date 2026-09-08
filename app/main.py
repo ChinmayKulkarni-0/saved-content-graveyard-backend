@@ -79,6 +79,18 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 @app.middleware("http")
+async def add_security_headers(_request: Request, call_next):
+    response = await call_next(_request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    response.headers.setdefault(
+        "Permissions-Policy", "camera=(), microphone=(), geolocation=()"
+    )
+    return response
+
+
+@app.middleware("http")
 async def add_process_time_header(request: Request, call_next):
     start = time.perf_counter()
     response = await call_next(request)

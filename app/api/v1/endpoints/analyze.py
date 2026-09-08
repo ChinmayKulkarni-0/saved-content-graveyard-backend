@@ -39,7 +39,8 @@ async def analyze_screenshot(
     file: UploadFile = File(...),
     current_user: str = Depends(get_current_user),
 ):
-    await rate_limiter.check_rate_limit(request, tier="free")
+    # TODO: resolve user tier (is_pro) and use RATE_LIMIT_PRO_TIER for pro users.
+    await rate_limiter.check_rate_limit(request, limit=settings.RATE_LIMIT_FREE_TIER)
 
     content = await _validate_and_read(file)
     filename = file.filename or "upload.png"
@@ -93,7 +94,7 @@ async def analyze_batch(
     files: list[UploadFile] = File(...),
     current_user: str = Depends(get_current_user),
 ):
-    await rate_limiter.check_rate_limit(request, tier="free")
+    await rate_limiter.check_rate_limit(request, limit=settings.RATE_LIMIT_FREE_TIER)
 
     if len(files) > MAX_BATCH_SIZE:
         raise HTTPException(
@@ -124,8 +125,8 @@ async def analyze_batch(
     return results
 
 
-@router.post("/cleanup")
-async def trigger_cleanup():
-    """Manually trigger orphan cleanup (admin/debug)."""
+@router.post("/cleanup", summary="Trigger manual orphan-file cleanup (debug)")
+async def trigger_cleanup(_current_user: str = Depends(get_current_user)):
+    """Manually trigger orphan cleanup (auth required)."""
     removed = await storage_service.cleanup_orphans()
     return {"removed": removed, "active": storage_service.active_count}

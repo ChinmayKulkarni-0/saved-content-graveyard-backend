@@ -26,16 +26,17 @@ async def seed_default_users() -> None:
             return
 
         admin = User(
-            id=str(uuid.uuid4()),
+            id=uuid.uuid4(),
             email=settings.ADMIN_USERNAME,
             hashed_password=get_password_hash(settings.ADMIN_PASSWORD),
-            tier="pro",
+            full_name="Admin",
+            is_pro=True,
         )
         dummy = User(
-            id=str(uuid.uuid4()),
+            id=uuid.uuid4(),
             email=DUMMY_USER_EMAIL,
             hashed_password=get_password_hash(DUMMY_USER_PASSWORD),
-            tier="free",
+            full_name="Dummy User",
         )
         session.add_all([admin, dummy])
         await session.commit()

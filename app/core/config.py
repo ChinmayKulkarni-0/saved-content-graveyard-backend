@@ -28,6 +28,9 @@ class Settings(BaseSettings):
 
     RATE_LIMIT_FREE_TIER: int = 10
     RATE_LIMIT_PRO_TIER: int = 100
+    RATE_LIMIT_AUTH_TRIES: int = 10
+
+    TRUST_X_FORWARDED_FOR: bool = False
 
     IMAGE_UPLOAD_MAX_SIZE_MB: int = 10
     IMAGE_RETENTION_SECONDS: int = 30
