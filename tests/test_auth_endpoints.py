@@ -278,6 +278,6 @@ class TestDeleteAccount:
         # The other user still sees their saved card.
         listed = await client.get("/v1/library/", headers=other_headers)
         assert listed.status_code == 200
-        titles = [item["title"] for item in listed.json()]
+        titles = [item["title"] for item in listed.json()["results"]]
         assert "Other User's Show" in titles
         assert "Doomed Film" not in titles

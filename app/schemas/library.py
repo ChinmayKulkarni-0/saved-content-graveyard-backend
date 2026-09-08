@@ -18,3 +18,24 @@ class SavedResult(BaseModel):
     thumbnail_url: str | None = None
     created_at: datetime
     updated_at: datetime
+
+
+class SavedResultCreate(BaseModel):
+    """Request body for manually saving a result card (no AI pipeline involved)."""
+
+    type: ContentType
+    title: str = Field(min_length=1, max_length=500)
+    description: str = Field(min_length=1, max_length=5000)
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    links: list[Link] = []
+    metadata: dict = {}
+    thumbnail_url: str | None = None
+
+
+class SavedResultList(BaseModel):
+    """Paginated list of the user's saved result cards."""
+
+    count: int
+    limit: int
+    offset: int
+    results: list[SavedResult]
