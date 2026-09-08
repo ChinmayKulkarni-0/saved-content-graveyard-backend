@@ -72,9 +72,9 @@ async def save_result(
 async def get_saved_results(
     user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db),
+    response: Response = None,
     offset: int = Query(0, ge=0, description="Number of items to skip"),
     limit: int = Query(20, ge=1, le=100, description="Max items to return"),
-    response: Response = None,
 ):
     """List the current user's saved result cards, newest first."""
     total = await db.scalar(
@@ -89,11 +89,10 @@ async def get_saved_results(
         .offset(offset)
         .limit(limit)
     )
-    if response is not None:
-        response.headers["X-Total-Count"] = str(total)
+    response.headers["X-Total-Count"] = str(total)
     results = [to_schema(item) for item in result.scalars().all()]
     return SavedResultList(
-        count=total or 0,
+        count=total,
         limit=limit,
         offset=offset,
         results=results,

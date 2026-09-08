@@ -230,6 +230,14 @@ class TestManualSave:
         )
         assert resp.status_code == 422
 
+    async def test_blank_title_returns_422(self, client):
+        resp = await client.post(
+            "/v1/library/",
+            json={"type": "product", "title": "   ", "description": "d"},
+            headers=_headers(),
+        )
+        assert resp.status_code == 422
+
     async def test_invalid_confidence_returns_422(self, client):
         resp = await client.post(
             "/v1/library/",

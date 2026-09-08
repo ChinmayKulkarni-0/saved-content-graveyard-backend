@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.schemas.pipeline import ContentType, Link
 
@@ -30,6 +30,14 @@ class SavedResultCreate(BaseModel):
     links: list[Link] = []
     metadata: dict = {}
     thumbnail_url: str | None = None
+
+    @field_validator("title", "description")
+    @classmethod
+    def _strip_and_reject_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("must not be blank")
+        return value
 
 
 class SavedResultList(BaseModel):
