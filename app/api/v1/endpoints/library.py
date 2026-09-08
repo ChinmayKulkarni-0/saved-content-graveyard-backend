@@ -70,9 +70,9 @@ async def save_result(
 
 @router.get("/", response_model=SavedResultList)
 async def get_saved_results(
+    response: Response,
     user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db),
-    response: Response = None,
     offset: int = Query(0, ge=0, description="Number of items to skip"),
     limit: int = Query(20, ge=1, le=100, description="Max items to return"),
 ):
