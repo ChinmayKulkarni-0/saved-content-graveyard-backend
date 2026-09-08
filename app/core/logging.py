@@ -53,7 +53,7 @@ def log_image_event(
 ) -> None:
     extra = {
         "action": action.value,
-        "filename": filename,
+        "image_filename": filename,
         "user_id": user_id,
         "timestamp": time.time(),
     }

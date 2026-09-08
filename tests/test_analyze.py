@@ -11,6 +11,20 @@ def _auth_headers():
     return {"Authorization": f"Bearer {token}"}
 
 
+def test_log_image_event_does_not_raise():
+    """Regression: log_image_event must not use reserved LogRecord keys (e.g. filename)."""
+    import logging
+
+    from app.core.logging import ImageAction, image_lifecycle_logger, log_image_event
+
+    prev_level = image_lifecycle_logger.level
+    image_lifecycle_logger.setLevel(logging.DEBUG)
+    try:
+        log_image_event(ImageAction.VALIDATE, "photo.png", user_id="u1")
+    finally:
+        image_lifecycle_logger.setLevel(prev_level)
+
+
 @pytest.fixture
 def client():
     return TestClient(app)
