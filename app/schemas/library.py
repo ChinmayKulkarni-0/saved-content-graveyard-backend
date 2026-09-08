@@ -13,8 +13,8 @@ class SavedResult(BaseModel):
     title: str
     description: str
     confidence: float = Field(ge=0.0, le=1.0)
-    links: list[Link] = []
-    metadata: dict = {}
+    links: list[Link] = Field(default_factory=list)
+    metadata: dict = Field(default_factory=dict)
     thumbnail_url: str | None = None
     created_at: datetime
     updated_at: datetime
@@ -27,8 +27,8 @@ class SavedResultCreate(BaseModel):
     title: str = Field(min_length=1, max_length=500)
     description: str = Field(min_length=1, max_length=5000)
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
-    links: list[Link] = []
-    metadata: dict = {}
+    links: list[Link] = Field(default_factory=list)
+    metadata: dict = Field(default_factory=dict)
     thumbnail_url: str | None = None
 
     @field_validator("title", "description")
