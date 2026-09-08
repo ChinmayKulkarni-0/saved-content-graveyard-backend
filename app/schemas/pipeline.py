@@ -1,4 +1,5 @@
 from enum import Enum
+from uuid import UUID
 
 from pydantic import BaseModel, Field
 
@@ -29,6 +30,12 @@ class PipelineResult(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
     links: list[Link] = []
     metadata: dict = {}
+
+
+class AnalyzeResponse(PipelineResult):
+    """Pipeline result plus the id of the card persisted to the user's library."""
+
+    saved_id: UUID
 
 
 class VisionAnalysis(BaseModel):

@@ -12,6 +12,7 @@ from app.models.user import SavedResult as SavedResultModel
 from app.models.user import User
 from app.schemas.library import SavedResult
 from app.schemas.pipeline import PipelineResult
+from app.services.library import save_result as persist_result
 from app.services.library import to_schema
 
 logger = logging.getLogger(__name__)
@@ -44,22 +45,9 @@ async def save_result(
     db: AsyncSession = Depends(get_db),
 ):
     """Save an analyzed result card to the user's library."""
-    item = SavedResultModel(
-        id=uuid.uuid4(),
-        user_id=user.id,
-        type=result.type.value,
-        title=result.title,
-        description=result.description,
-        confidence=result.confidence,
-        links=[link.model_dump() for link in result.links],
-        metadata_json=result.metadata,
-    )
     try:
-        db.add(item)
-        await db.commit()
-        await db.refresh(item)
+        item = await persist_result(db, user, result)
     except SQLAlchemyError:
-        await db.rollback()
         logger.exception("Failed to save result for user=%s", user.id)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

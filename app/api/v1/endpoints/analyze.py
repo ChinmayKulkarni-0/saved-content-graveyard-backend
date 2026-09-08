@@ -1,13 +1,18 @@
 import time
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.deps import get_current_active_user
 from app.core.logging import ImageAction, log_image_event, logger
 from app.core.rate_limit import rate_limiter
-from app.core.security import get_admin_user, get_current_user_model
+from app.core.security import get_admin_user
+from app.db.session import get_db
 from app.models.user import User
-from app.schemas.pipeline import PipelineResult
+from app.schemas.pipeline import AnalyzeResponse, PipelineResult
+from app.services.library import save_result
 from app.services.pipeline import ProcessingPipeline
 from app.services.storage import storage_service
 
@@ -72,11 +77,12 @@ async def _apply_rate_limit(request: Request, user: User) -> None:
     await rate_limiter.check_rate_limit(request, limit=getattr(settings, limit_name))
 
 
-@router.post("/", response_model=PipelineResult)
+@router.post("/", response_model=AnalyzeResponse)
 async def analyze_screenshot(
     request: Request,
     file: UploadFile = File(...),
-    user: User = Depends(get_current_user_model),
+    user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
 ):
     await _apply_rate_limit(request, user)
 
@@ -96,15 +102,24 @@ async def analyze_screenshot(
         pipeline = ProcessingPipeline()
         result = await pipeline.process_image(tmp_path)
 
+        try:
+            saved = await save_result(db, user, result)
+        except SQLAlchemyError:
+            logger.exception("Failed to persist analysis result for user=%s", user.id)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Image analysis failed. Please try again.",
+            )
+
         elapsed_ms = (time.perf_counter() - start) * 1000
         log_image_event(
             ImageAction.PROCESS_COMPLETE,
             filename,
             user_id=str(user.id),
             duration_ms=elapsed_ms,
-            detail=f"type={result.type.value}",
+            detail=f"type={result.type.value} saved_id={saved.id}",
         )
-        return result
+        return AnalyzeResponse(saved_id=saved.id, **result.model_dump())
 
     except HTTPException:
         raise
@@ -133,7 +148,7 @@ async def analyze_screenshot(
 async def analyze_batch(
     request: Request,
     files: list[UploadFile] = File(...),
-    user: User = Depends(get_current_user_model),
+    user: User = Depends(get_current_active_user),
 ):
     await _apply_rate_limit(request, user)
 

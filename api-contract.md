@@ -44,6 +44,7 @@ Response `200`:
 
 ```json
 {
+  "saved_id": "uuid",
   "type": "product",
   "title": "Dr. Martens 1460 Pascal",
   "description": "A black leather boot from Dr. Martens shown in an Instagram ad.",
@@ -59,6 +60,9 @@ Response `200`:
   }
 }
 ```
+
+The result card is persisted automatically to the user's library on success;
+`saved_id` references it (retrievable/deletable via `/v1/library/{saved_id}`).
 
 `type` enum: `product | movie | tv | unknown`
 
@@ -121,6 +125,10 @@ their own saved cards.
 
 `GET /health` → `{"status": "healthy", "version": "0.1.0", "database": "ok"}`
 (canary: the database is pinged; `503` with `status: "degraded"` when it is down).
+
+`GET /health/auth` — protected probe (`Bearer` token required, active user only)
+→ `{"status": "ok", "user_id": "...", "email": "..."}`. `401` missing/invalid
+token, `403` inactive user, `404` token references a nonexistent user.
 
 ## Field Conventions
 

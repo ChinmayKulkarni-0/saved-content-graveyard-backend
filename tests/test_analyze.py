@@ -105,11 +105,34 @@ class TestAnalyzeEndpoint:
 
     async def test_rejects_inactive_user(self, client):
         resp = await client.post("/v1/analyze/", files=_file(), headers=_headers(client.inactive_user))
-        assert resp.status_code == 401
+        assert resp.status_code == 403
 
     async def test_rejects_unknown_user(self, client):
         resp = await client.post("/v1/analyze/", files=_file(), headers=_headers(uuid.uuid4()))
+        assert resp.status_code == 404
+
+    async def test_rejects_missing_token(self, client):
+        resp = await client.post("/v1/analyze/", files=_file())
         assert resp.status_code == 401
+
+    async def test_persists_result_and_returns_saved_id(self, client):
+        resp = await client.post("/v1/analyze/", files=_file(), headers=_headers(client.normal_user))
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["saved_id"]
+        assert data["type"]
+        assert data["confidence"] >= 0.0
+
+        listed = await client.get("/v1/library/", headers=_headers(client.normal_user))
+        assert listed.status_code == 200
+        assert any(item["id"] == data["saved_id"] for item in listed.json())
+
+    async def test_persisted_result_is_user_scoped(self, client):
+        resp = await client.post("/v1/analyze/", files=_file(), headers=_headers(client.normal_user))
+        saved_id = resp.json()["saved_id"]
+
+        listed = await client.get("/v1/library/", headers=_headers(client.pro_user))
+        assert all(item["id"] != saved_id for item in listed.json())
 
     async def test_rejects_non_image(self, client):
         resp = await client.post(

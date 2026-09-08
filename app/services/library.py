@@ -1,8 +1,14 @@
 """Helpers for persisting and loading saved result cards."""
 
+import uuid
+
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.models.user import SavedResult as SavedResultModel
+from app.models.user import User
 from app.schemas.library import SavedResult
-from app.schemas.pipeline import ContentType, Link
+from app.schemas.pipeline import ContentType, Link, PipelineResult
 
 
 def to_schema(item: SavedResultModel) -> SavedResult:
@@ -20,3 +26,28 @@ def to_schema(item: SavedResultModel) -> SavedResult:
         created_at=item.created_at,
         updated_at=item.updated_at,
     )
+
+
+async def save_result(db: AsyncSession, user: User, result: PipelineResult) -> SavedResultModel:
+    """Persist a PipelineResult card for the user and commit it.
+
+    Raises the original SQLAlchemyError on failure after rolling back.
+    """
+    item = SavedResultModel(
+        id=uuid.uuid4(),
+        user_id=user.id,
+        type=result.type.value,
+        title=result.title,
+        description=result.description,
+        confidence=result.confidence,
+        links=[link.model_dump() for link in result.links],
+        metadata_json=result.metadata,
+    )
+    try:
+        db.add(item)
+        await db.commit()
+        await db.refresh(item)
+    except SQLAlchemyError:
+        await db.rollback()
+        raise
+    return item

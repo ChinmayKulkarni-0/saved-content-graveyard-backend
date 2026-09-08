@@ -4,16 +4,18 @@ import time
 import traceback
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from app.api.v1.router import api_router
 from app.core.config import settings
+from app.core.deps import get_current_active_user
 from app.core.logging import logger, setup_logging
 from app.db.seed import seed_default_users
 from app.db.session import engine, init_db
+from app.models.user import User
 from app.services.storage import storage_service
 
 _cleanup_task: asyncio.Task | None = None
@@ -121,6 +123,12 @@ async def health_check():
             },
         )
     return {"status": "healthy", "version": settings.APP_VERSION, "database": "ok"}
+
+
+@app.get("/health/auth", tags=["health"], summary="Protected route probe")
+async def health_auth(user: User = Depends(get_current_active_user)):
+    """Canary: proves the auth dependency + DB round-trip work end to end."""
+    return {"status": "ok", "user_id": str(user.id), "email": user.email}
 
 
 if __name__ == "__main__":
