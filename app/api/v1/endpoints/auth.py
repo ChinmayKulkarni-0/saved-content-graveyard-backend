@@ -8,11 +8,10 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.deps import get_current_user
+from app.core.deps import get_current_active_user, get_current_user
 from app.core.rate_limit import rate_limiter
 from app.core.security import (
     create_access_token,
-    get_current_user_model,
     get_password_hash,
     verify_password,
 )
@@ -164,7 +163,7 @@ async def logout():
 
 @router.get("/me", response_model=UserPublic, summary="Get the current user's info")
 async def read_current_user(
-    user: User = Depends(get_current_user_model),
+    user: User = Depends(get_current_active_user),
 ):
     return UserPublic.model_validate(user)
 
@@ -179,6 +178,9 @@ async def delete_current_user(
     SavedResult rows are removed explicitly first: the FK has no ON DELETE
     CASCADE, so they must be purged before the user row. Both statements share
     one transaction — if either fails, nothing is deleted.
+
+    Deliberately uses ``get_current_user`` (not ``get_current_active_user``):
+    even a deactivated account may be deleted by its owner.
     """
     try:
         await db.execute(

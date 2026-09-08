@@ -12,7 +12,8 @@ JWT Bearer token. `POST /v1/auth/token` is the OAuth2 password flow
 
 - `POST /v1/auth/signup` — create account → `201` with `{access_token, token_type, user}`
 - `POST /v1/auth/login` — JSON credentials → `200` with `{access_token, token_type, user}`
-- `GET /v1/auth/me` — current user → `200` with `{user}`, `401` if invalid token
+- `GET /v1/auth/me` — current user → `200` with `{user}`, `401` if invalid/missing
+  token, `404` if the token references a nonexistent user, `403` if inactive user
 - `DELETE /v1/auth/me` — permanently deletes the account and all saved result
   cards in one transaction → `200 {"message": "Account deleted successfully"}`;
   `404` if the token's user no longer exists. The token becomes invalid.
@@ -90,7 +91,8 @@ skipped, not fatal).
 ## Library (result cards)
 
 Auth required (`Bearer` token). Ownership enforced: users can only read/delete
-their own saved cards.
+their own saved cards. Auth errors follow the shared convention: `401` invalid/missing
+token, `404` token references a nonexistent user, `403` inactive user.
 
 - `GET /v1/library/?offset=0&limit=50` — newest first; `limit` max 100.
   Response: array of `SavedResult` (see below). `X-Total-Count` header carries

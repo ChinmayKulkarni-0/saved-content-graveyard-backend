@@ -6,7 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.security import get_current_user_model
+from app.core.deps import get_current_active_user
 from app.db.session import get_db
 from app.models.user import SavedResult as SavedResultModel
 from app.models.user import User
@@ -41,7 +41,7 @@ async def _get_owned_result(
 @router.post("/", response_model=SavedResult, status_code=status.HTTP_201_CREATED)
 async def save_result(
     result: PipelineResult,
-    user: User = Depends(get_current_user_model),
+    user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Save an analyzed result card to the user's library."""
@@ -59,7 +59,7 @@ async def save_result(
 
 @router.get("/", response_model=list[SavedResult])
 async def get_saved_results(
-    user: User = Depends(get_current_user_model),
+    user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db),
     offset: int = Query(0, ge=0, description="Number of items to skip"),
     limit: int = Query(50, ge=1, le=100, description="Max items to return"),
@@ -86,7 +86,7 @@ async def get_saved_results(
 @router.get("/{item_id}", response_model=SavedResult)
 async def get_saved_result(
     item_id: uuid.UUID,
-    user: User = Depends(get_current_user_model),
+    user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Fetch a single saved result owned by the current user."""
@@ -97,7 +97,7 @@ async def get_saved_result(
 @router.delete("/{item_id}", summary="Delete a saved result (hard delete)")
 async def delete_saved_result(
     item_id: uuid.UUID,
-    user: User = Depends(get_current_user_model),
+    user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Hard-delete a single saved result owned by the current user."""

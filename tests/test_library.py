@@ -25,6 +25,7 @@ PIPELINE_RESULT = {
 
 TEST_USER_SUB = str(uuid.uuid4())
 OTHER_USER_SUB = str(uuid.uuid4())
+INACTIVE_USER_SUB = str(uuid.uuid4())
 
 
 def _headers(sub: str | None = None):
@@ -47,6 +48,12 @@ async def client():
             [
                 User(id=uuid.UUID(TEST_USER_SUB), email="test@example.com", hashed_password="x"),
                 User(id=uuid.UUID(OTHER_USER_SUB), email="other@example.com", hashed_password="x"),
+                User(
+                    id=uuid.UUID(INACTIVE_USER_SUB),
+                    email="inactive@example.com",
+                    hashed_password="x",
+                    is_active=False,
+                ),
             ]
         )
         await session.commit()
@@ -99,7 +106,12 @@ async def test_save_result_creates_saved_result(client):
 async def test_save_rejects_unknown_user(client):
     bad_headers = _headers(str(uuid.uuid4()))
     resp = await client.post("/v1/library/", json=PIPELINE_RESULT, headers=bad_headers)
-    assert resp.status_code == 401
+    assert resp.status_code == 404
+
+
+async def test_library_rejects_inactive_user(client):
+    resp = await client.get("/v1/library/", headers=_headers(INACTIVE_USER_SUB))
+    assert resp.status_code == 403
 
 
 async def test_save_and_list(client):

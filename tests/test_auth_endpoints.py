@@ -16,6 +16,7 @@ EMAIL = "newuser@example.com"
 FULL_NAME = "New User"
 
 DUMMY_ID = uuid.uuid4()
+INACTIVE_ID = uuid.uuid4()
 
 
 @pytest.fixture
@@ -35,6 +36,14 @@ async def client():
                 email="existing@example.com",
                 hashed_password=get_password_hash(PASSWORD),
                 full_name="Existing User",
+            )
+        )
+        session.add(
+            User(
+                id=INACTIVE_ID,
+                email="disabled@example.com",
+                hashed_password=get_password_hash(PASSWORD),
+                is_active=False,
             )
         )
         await session.commit()
@@ -148,7 +157,7 @@ class TestMe:
 
     async def test_me_rejects_token_for_unknown_user(self, client):
         resp = await client.get("/v1/auth/me", headers=_headers(str(uuid.uuid4())))
-        assert resp.status_code == 401
+        assert resp.status_code == 404
 
     async def test_me_rejects_tampered_token(self, client):
         token = create_access_token(data={"sub": str(DUMMY_ID)})
@@ -159,11 +168,23 @@ class TestMe:
         )
         assert resp.status_code == 401
 
+    async def test_me_forbids_inactive_user(self, client):
+        resp = await client.get("/v1/auth/me", headers=_headers(str(INACTIVE_ID)))
+        assert resp.status_code == 403
+
 
 class TestDeleteAccount:
     async def test_delete_account_requires_auth(self, client):
         resp = await client.delete("/v1/auth/me")
         assert resp.status_code == 401
+
+    async def test_inactive_user_can_still_delete_account(self, client):
+        # Deliberate: deleting one's own data is allowed even when deactivated.
+        resp = await client.delete("/v1/auth/me", headers=_headers(str(INACTIVE_ID)))
+        assert resp.status_code == 200
+        assert resp.json() == {"message": "Account deleted successfully"}
+        again = await client.delete("/v1/auth/me", headers=_headers(str(INACTIVE_ID)))
+        assert again.status_code == 404
 
     async def test_delete_account_removes_user_and_saved_results(self, client):
         from sqlalchemy import func, select
@@ -213,12 +234,12 @@ class TestDeleteAccount:
 
     async def test_delete_account_persists_other_users(self, client):
         # Deleting one account must not touch anyone else's data.
-        admin_signup = await client.post(
+        sibling_signup = await client.post(
             "/v1/auth/signup",
             json={"email": "sibling@example.com", "password": PASSWORD},
         )
         other_headers = {
-            "Authorization": f"Bearer {admin_signup.json()['access_token']}"
+            "Authorization": f"Bearer {sibling_signup.json()['access_token']}"
         }
         await client.post(
             "/v1/library/",

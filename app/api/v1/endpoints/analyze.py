@@ -5,10 +5,9 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.deps import get_current_active_user
+from app.core.deps import get_admin_user, get_current_active_user
 from app.core.logging import ImageAction, log_image_event, logger
 from app.core.rate_limit import rate_limiter
-from app.core.security import get_admin_user
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.pipeline import AnalyzeResponse, PipelineResult
