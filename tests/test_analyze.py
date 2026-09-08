@@ -119,8 +119,12 @@ class TestBatchEndpoint:
 
 class TestCleanupEndpoint:
     def test_cleanup_returns_stats(self, client):
-        resp = client.post("/v1/analyze/cleanup")
+        resp = client.post("/v1/analyze/cleanup", headers=_auth_headers())
         assert resp.status_code == 200
         data = resp.json()
         assert "removed" in data
         assert "active" in data
+
+    def test_cleanup_requires_auth(self, client):
+        resp = client.post("/v1/analyze/cleanup")
+        assert resp.status_code == 401

@@ -1,7 +1,9 @@
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import get_current_user
@@ -11,6 +13,8 @@ from app.models.user import User
 from app.schemas.library import SavedResult
 from app.schemas.pipeline import PipelineResult
 from app.services.library import to_schema
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -70,9 +74,18 @@ async def save_result(
         links=[link.model_dump() for link in result.links],
         metadata_json=result.metadata,
     )
-    db.add(item)
-    await db.commit()
-    await db.refresh(item)
+    try:
+        db.add(item)
+        await db.commit()
+        await db.refresh(item)
+    except SQLAlchemyError:
+        await db.rollback()
+        logger.exception("Failed to save result for user=%s", user_id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to save the result.",
+        )
+    logger.info("Saved result %s for user=%s", item.id, user_id)
     return to_schema(item)
 
 
@@ -81,6 +94,7 @@ async def get_saved_results(
     current_user: str = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """List the current user's saved result cards, newest first."""
     user_id = await _require_user(db, current_user)
 
     result = await db.execute(
@@ -97,17 +111,29 @@ async def get_saved_result(
     current_user: str = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """Fetch a single saved result owned by the current user."""
     item = await _get_owned_result(db, item_id, await _require_user(db, current_user))
     return to_schema(item)
 
 
-@router.delete("/{item_id}")
+@router.delete("/{item_id}", summary="Delete a saved result (hard delete)")
 async def delete_saved_result(
     item_id: uuid.UUID,
     current_user: str = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    item = await _get_owned_result(db, item_id, await _require_user(db, current_user))
-    await db.delete(item)
-    await db.commit()
+    """Hard-delete a single saved result owned by the current user."""
+    user_id = await _require_user(db, current_user)
+    item = await _get_owned_result(db, item_id, user_id)
+    try:
+        await db.delete(item)
+        await db.commit()
+    except SQLAlchemyError:
+        await db.rollback()
+        logger.exception("Failed to delete result %s for user=%s", item_id, user_id)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete the saved result.",
+        )
+    logger.info("Deleted result %s for user=%s", item_id, user_id)
     return {"status": "deleted"}

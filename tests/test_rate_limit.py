@@ -1,18 +1,17 @@
 import pytest
 from fastapi import HTTPException, Request
-from fastapi.testclient import TestClient
 
+from app.core.config import settings
 from app.core.rate_limit import RateLimiter
-from app.main import app
 
 
-def _make_request(client_id: str = "127.0.0.1"):
+def _make_request(client_id: str = "127.0.0.1", headers: list[tuple[bytes, bytes]] | None = None):
     """Create a minimal mock Request for testing."""
     scope = {
         "type": "http",
         "method": "GET",
         "path": "/",
-        "headers": [],
+        "headers": headers or [],
         "client": (client_id, 0),
         "server": ("localhost", 8000),
     }
@@ -24,21 +23,33 @@ async def test_allows_requests_under_limit():
     limiter = RateLimiter()
     req = _make_request("10.0.0.1")
     for _ in range(5):
-        await limiter.check_rate_limit(req, tier="free")
+        await limiter.check_rate_limit(req)
     assert True  # no exception raised
 
 
 @pytest.mark.asyncio
 async def test_blocks_requests_over_limit():
-    from app.core.config import settings
-
     limiter = RateLimiter()
     req = _make_request("10.0.0.2")
     for _ in range(settings.RATE_LIMIT_FREE_TIER):
-        await limiter.check_rate_limit(req, tier="free")
+        await limiter.check_rate_limit(req)
     with pytest.raises(HTTPException) as exc_info:
-        await limiter.check_rate_limit(req, tier="free")
+        await limiter.check_rate_limit(req)
     assert exc_info.value.status_code == 429
+
+
+@pytest.mark.asyncio
+async def test_explicit_limit_overrides_default():
+    limiter = RateLimiter()
+    req = _make_request("10.0.0.21")
+    for _ in range(3):
+        await limiter.check_rate_limit(req, limit=3)
+    with pytest.raises(HTTPException) as exc_info:
+        await limiter.check_rate_limit(req, limit=3)
+    assert exc_info.value.status_code == 429
+    # a higher explicit limit reassesses the same bucket
+    await limiter.check_rate_limit(req, limit=5)
+    assert True
 
 
 @pytest.mark.asyncio
@@ -47,33 +58,49 @@ async def test_different_clients_independent():
     req1 = _make_request("10.0.0.3")
     req2 = _make_request("10.0.0.4")
     for _ in range(5):
-        await limiter.check_rate_limit(req1, tier="free")
+        await limiter.check_rate_limit(req1)
     # req2 should still work
-    await limiter.check_rate_limit(req2, tier="free")
+    await limiter.check_rate_limit(req2)
     assert True
 
 
 @pytest.mark.asyncio
-async def test_pro_tier_higher_limit():
-    from app.core.config import settings
-
+async def test_namespaced_buckets_are_independent():
     limiter = RateLimiter()
-    req = _make_request("10.0.0.5")
-    for _ in range(settings.RATE_LIMIT_FREE_TIER + 1):
-        await limiter.check_rate_limit(req, tier="pro")
-    assert True  # pro tier allows more
+    req = _make_request("10.0.0.6")
+    for _ in range(settings.RATE_LIMIT_FREE_TIER):
+        await limiter.check_rate_limit(req, namespace="default")
+    # a separate namespace (e.g. login) is unlimited by default namespace
+    await limiter.check_rate_limit(req, limit=100, namespace="auth")
+    assert True
+
+
+@pytest.mark.asyncio
+async def test_spoofed_xff_is_not_trusted_by_default():
+    """X-Forwarded-For must not bypass the limit unless the proxy header is trusted."""
+    limiter = RateLimiter()
+    spoofer = _make_request(
+        "10.0.0.7",
+        headers=[(b"x-forwarded-for", b"203.0.113.99")],
+    )
+    for _ in range(settings.RATE_LIMIT_FREE_TIER):
+        await limiter.check_rate_limit(spoofer)
+    with pytest.raises(HTTPException) as exc_info:
+        await limiter.check_rate_limit(spoofer)
+    assert exc_info.value.status_code == 429
 
 
 class TestRateLimitIntegration:
     def test_rate_limit_returns_429(self):
-        client = TestClient(app)
-        from app.core.security import create_access_token
+        from fastapi.testclient import TestClient
 
+        from app.core.security import create_access_token
+        from app.main import app
+
+        client = TestClient(app)
         token = create_access_token(data={"sub": "rl-test"})
         headers = {"Authorization": f"Bearer {token}"}
         fake = b"\x89PNG\r\n\x1a\n" + b"\x00" * 50
-
-        from app.core.config import settings
 
         for _ in range(settings.RATE_LIMIT_FREE_TIER + 1):
             client.post(
