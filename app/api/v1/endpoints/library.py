@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.security import get_current_user
 from app.db.session import get_db
 from app.models.user import SavedResult as SavedResultModel
+from app.models.user import User
 from app.schemas.library import SavedResult
 from app.schemas.pipeline import PipelineResult
 from app.services.library import to_schema
@@ -14,14 +15,22 @@ from app.services.library import to_schema
 router = APIRouter()
 
 
-def _parse_user_id(current_user: str) -> uuid.UUID:
+async def _require_user(db: AsyncSession, current_user: str) -> uuid.UUID:
     try:
-        return uuid.UUID(current_user)
+        user_id = uuid.UUID(current_user)
     except (ValueError, TypeError, AttributeError):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid authentication token",
         )
+
+    user = await db.get(User, user_id)
+    if user is None or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found or inactive",
+        )
+    return user_id
 
 
 async def _get_owned_result(
@@ -49,7 +58,7 @@ async def save_result(
     db: AsyncSession = Depends(get_db),
 ):
     """Save an analyzed result card to the user's library."""
-    user_id = _parse_user_id(current_user)
+    user_id = await _require_user(db, current_user)
 
     item = SavedResultModel(
         id=uuid.uuid4(),
@@ -72,7 +81,7 @@ async def get_saved_results(
     current_user: str = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    user_id = _parse_user_id(current_user)
+    user_id = await _require_user(db, current_user)
 
     result = await db.execute(
         select(SavedResultModel)
@@ -88,7 +97,7 @@ async def get_saved_result(
     current_user: str = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    item = await _get_owned_result(db, item_id, _parse_user_id(current_user))
+    item = await _get_owned_result(db, item_id, await _require_user(db, current_user))
     return to_schema(item)
 
 
@@ -98,7 +107,7 @@ async def delete_saved_result(
     current_user: str = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    item = await _get_owned_result(db, item_id, _parse_user_id(current_user))
+    item = await _get_owned_result(db, item_id, await _require_user(db, current_user))
     await db.delete(item)
     await db.commit()
     return {"status": "deleted"}

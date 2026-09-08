@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.core.security import create_access_token
 from app.db.session import get_db
 from app.main import app
-from app.models.user import Base
+from app.models.user import Base, User
 
 PIPELINE_RESULT = {
     "type": "product",
@@ -23,9 +23,12 @@ PIPELINE_RESULT = {
     "metadata": {"raw_text": "chair product", "detected_items": ["chair"]},
 }
 
+TEST_USER_SUB = str(uuid.uuid4())
+OTHER_USER_SUB = str(uuid.uuid4())
+
 
 def _headers(sub: str | None = None):
-    token = create_access_token(data={"sub": sub or str(uuid.uuid4())})
+    token = create_access_token(data={"sub": sub or TEST_USER_SUB})
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -38,6 +41,15 @@ async def client():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     maker = async_sessionmaker(engine, expire_on_commit=False)
+
+    async with maker() as session:
+        session.add_all(
+            [
+                User(id=uuid.UUID(TEST_USER_SUB), email="test@example.com", hashed_password="x"),
+                User(id=uuid.UUID(OTHER_USER_SUB), email="other@example.com", hashed_password="x"),
+            ]
+        )
+        await session.commit()
 
     async def override_get_db():
         async with maker() as session:
@@ -65,12 +77,11 @@ async def test_requires_auth_to_save(client):
 
 
 async def test_save_result_creates_saved_result(client):
-    sub = str(uuid.uuid4())
-    resp = await client.post("/v1/library/", json=PIPELINE_RESULT, headers=_headers(sub))
+    resp = await client.post("/v1/library/", json=PIPELINE_RESULT, headers=_headers())
     assert resp.status_code == 201
     data = resp.json()
     assert data["id"]
-    assert data["user_id"] == sub
+    assert data["user_id"] == TEST_USER_SUB
     assert data["type"] == "product"
     assert data["title"] == "Example Chair"
     assert data["description"] == "A comfortable ergonomic chair."
@@ -85,12 +96,17 @@ async def test_save_result_creates_saved_result(client):
     assert data["updated_at"]
 
 
+async def test_save_rejects_unknown_user(client):
+    bad_headers = _headers(str(uuid.uuid4()))
+    resp = await client.post("/v1/library/", json=PIPELINE_RESULT, headers=bad_headers)
+    assert resp.status_code == 401
+
+
 async def test_save_and_list(client):
-    sub = str(uuid.uuid4())
-    created = await client.post("/v1/library/", json=PIPELINE_RESULT, headers=_headers(sub))
+    created = await client.post("/v1/library/", json=PIPELINE_RESULT, headers=_headers())
     item_id = created.json()["id"]
 
-    listed = await client.get("/v1/library/", headers=_headers(sub))
+    listed = await client.get("/v1/library/", headers=_headers())
     assert listed.status_code == 200
     items = listed.json()
     assert len(items) == 1
@@ -98,7 +114,7 @@ async def test_save_and_list(client):
 
 
 async def test_library_is_user_scoped(client):
-    other_headers = {"Authorization": f"Bearer {create_access_token(data={'sub': str(uuid.uuid4())})}"}
+    other_headers = _headers(OTHER_USER_SUB)
     await client.post("/v1/library/", json=PIPELINE_RESULT, headers=_headers())
 
     listed = await client.get("/v1/library/", headers=other_headers)
@@ -106,11 +122,10 @@ async def test_library_is_user_scoped(client):
 
 
 async def test_get_single_item(client):
-    sub = str(uuid.uuid4())
-    created = await client.post("/v1/library/", json=PIPELINE_RESULT, headers=_headers(sub))
+    created = await client.post("/v1/library/", json=PIPELINE_RESULT, headers=_headers())
     item_id = created.json()["id"]
 
-    resp = await client.get(f"/v1/library/{item_id}", headers=_headers(sub))
+    resp = await client.get(f"/v1/library/{item_id}", headers=_headers())
     assert resp.status_code == 200
     assert resp.json()["id"] == item_id
 
@@ -129,21 +144,20 @@ async def test_cannot_read_another_users_item(client):
     created = await client.post("/v1/library/", json=PIPELINE_RESULT, headers=_headers())
     item_id = created.json()["id"]
 
-    other_headers = {"Authorization": f"Bearer {create_access_token(data={'sub': str(uuid.uuid4())})}"}
+    other_headers = _headers(OTHER_USER_SUB)
     resp = await client.get(f"/v1/library/{item_id}", headers=other_headers)
     assert resp.status_code == 404
 
 
 async def test_delete_removes_item(client):
-    sub = str(uuid.uuid4())
-    created = await client.post("/v1/library/", json=PIPELINE_RESULT, headers=_headers(sub))
+    created = await client.post("/v1/library/", json=PIPELINE_RESULT, headers=_headers())
     item_id = created.json()["id"]
 
-    deleted = await client.delete(f"/v1/library/{item_id}", headers=_headers(sub))
+    deleted = await client.delete(f"/v1/library/{item_id}", headers=_headers())
     assert deleted.status_code == 200
     assert deleted.json() == {"status": "deleted"}
 
-    listed = await client.get("/v1/library/", headers=_headers(sub))
+    listed = await client.get("/v1/library/", headers=_headers())
     assert listed.json() == []
-    assert (await client.get(f"/v1/library/{item_id}", headers=_headers(sub))).status_code == 404
-    assert (await client.delete(f"/v1/library/{item_id}", headers=_headers(sub))).status_code == 404
+    assert (await client.get(f"/v1/library/{item_id}", headers=_headers())).status_code == 404
+    assert (await client.delete(f"/v1/library/{item_id}", headers=_headers())).status_code == 404
