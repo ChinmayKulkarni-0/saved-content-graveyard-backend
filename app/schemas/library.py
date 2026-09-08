@@ -1,27 +1,20 @@
+import uuid
 from datetime import datetime
 
 from pydantic import BaseModel, Field
 
+from app.schemas.pipeline import ContentType, Link
 
-class SavedItem(BaseModel):
-    id: str
-    user_id: str
+
+class SavedResult(BaseModel):
+    id: uuid.UUID
+    user_id: uuid.UUID
+    type: ContentType
+    title: str
     description: str
-    category: str
-    confidence: float
-    raw_text: str | None = None
-    product_links: list = []
-    streaming_links: list = []
-    tags: list[str] = []
-    created_at: datetime
-    is_deleted: bool = False
-
-
-class SavedItemCreate(BaseModel):
-    description: str
-    category: str
     confidence: float = Field(ge=0.0, le=1.0)
-    raw_text: str | None = None
-    product_links: list = []
-    streaming_links: list = []
-    tags: list[str] = []
+    links: list[Link] = []
+    metadata: dict = {}
+    thumbnail_url: str | None = None
+    created_at: datetime
+    updated_at: datetime
