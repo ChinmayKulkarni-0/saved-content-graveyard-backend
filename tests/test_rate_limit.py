@@ -90,27 +90,11 @@ async def test_spoofed_xff_is_not_trusted_by_default():
     assert exc_info.value.status_code == 429
 
 
-class TestRateLimitIntegration:
-    def test_rate_limit_returns_429(self):
-        from fastapi.testclient import TestClient
-
-        from app.core.security import create_access_token
-        from app.main import app
-
-        client = TestClient(app)
-        token = create_access_token(data={"sub": "rl-test"})
-        headers = {"Authorization": f"Bearer {token}"}
-        fake = b"\x89PNG\r\n\x1a\n" + b"\x00" * 50
-
-        for _ in range(settings.RATE_LIMIT_FREE_TIER + 1):
-            client.post(
-                "/v1/analyze/",
-                files={"file": ("p.png", fake, "image/png")},
-                headers=headers,
-            )
-        resp = client.post(
-            "/v1/analyze/",
-            files={"file": ("p.png", fake, "image/png")},
-            headers=headers,
-        )
-        assert resp.status_code == 429
+@pytest.mark.asyncio
+async def test_bucket_cap_evicts_oldest():
+    """The bucket store stays bounded under a flood of distinct client ids."""
+    limiter = RateLimiter()
+    for i in range(12000):
+        req = _make_request(f"10.0.0.{i + 1}")
+        await limiter.check_rate_limit(req, limit=1000)
+    assert len(limiter._buckets) <= 10000

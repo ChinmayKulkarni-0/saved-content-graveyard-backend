@@ -1,12 +1,10 @@
-import logging
 import time
+from urllib.parse import quote
 
 from app.schemas.pipeline import ContentType, Link, LinkType, PipelineResult, VisionAnalysis
 from app.services.movie import MovieService
 from app.services.product import ProductService
 from app.services.vision import VisionService
-
-logger = logging.getLogger(__name__)
 
 
 class ProcessingPipeline:
@@ -63,6 +61,8 @@ class ProcessingPipeline:
             (ContentType.MOVIE, movie_score),
             (ContentType.TV, tv_score),
         ]
+        # max() keeps the first maximum, so ties resolve to PRODUCT > MOVIE > TV
+        # (declared order). Deliberate and deterministic.
         best = max(scores, key=lambda x: x[1])
 
         if best[1] > 0:
@@ -102,7 +102,7 @@ class ProcessingPipeline:
 
         links: list[Link] = []
         if title:
-            encoded = title.replace(" ", "+")
+            encoded = quote(title.replace(" ", "+"))
             links.append(
                 Link(
                     label=f"Search for '{title}'",

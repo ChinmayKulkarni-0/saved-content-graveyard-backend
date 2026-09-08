@@ -4,7 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from app.services.storage import MAX_ORPHAN_AGE_SECONDS, StorageService
+from app.core.config import settings
+from app.services.storage import StorageService
 
 
 @pytest.fixture
@@ -44,7 +45,7 @@ async def test_save_preserves_content(storage):
 async def test_cleanup_removes_old_files(storage, monkeypatch):
     path = await storage.save_temp_image(b"old data", "old.png")
     # Artificially age the file
-    storage._active[path] = time.time() - MAX_ORPHAN_AGE_SECONDS - 10
+    storage._active[path] = time.time() - settings.IMAGE_RETENTION_SECONDS - 10
 
     removed = await storage.cleanup_orphans()
     assert removed >= 1

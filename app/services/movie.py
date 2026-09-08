@@ -1,5 +1,5 @@
 import logging
-import re
+from urllib.parse import quote
 
 from app.schemas.pipeline import ContentType, Link, LinkType
 
@@ -59,7 +59,7 @@ class MovieService:
                 return [Link(**link) for link in media["links"]]
 
         if title:
-            encoded = re.sub(r"\s+", "+", title)
+            encoded = quote(title.replace(" ", "+"))
             return [
                 Link(
                     label=f"Search for '{title}' on JustWatch",

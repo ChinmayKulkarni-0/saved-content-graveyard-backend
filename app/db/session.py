@@ -5,6 +5,7 @@ from collections.abc import AsyncIterator
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.config import settings
+from app.core.logging import logger
 from app.models.user import Base
 
 
@@ -31,8 +32,13 @@ async_session_maker = async_sessionmaker(engine, expire_on_commit=False)
 async def init_db() -> None:
     """Create all tables on startup.
 
-    Dev-friendly only: switch to Alembic migrations in production.
+    Dev/test-friendly only. In production (APP_ENV=production) startup does
+    nothing here — schema is managed by Alembic migrations instead.
     """
+    if settings.APP_ENV.lower() == "production":
+        return
+
+    logger.warning("create_all is running (APP_ENV=%s) — use Alembic in production", settings.APP_ENV)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 

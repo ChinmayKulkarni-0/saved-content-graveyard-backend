@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import json
 import logging
@@ -30,14 +31,16 @@ Rules:
 Return ONLY valid JSON, no markdown fences."""
 
 
+def _is_production() -> bool:
+    return settings.APP_ENV.lower() == "production"
+
+
 class VisionService:
     """Multimodal vision service using Google Gemini Flash."""
 
     async def analyze_image(self, image_path: str) -> VisionAnalysis:
         """Analyze an image file for OCR + content classification."""
-        with open(image_path, "rb") as f:
-            image_bytes = f.read()
-
+        image_bytes = await asyncio.to_thread(self._read_file, image_path)
         mime_type = self._guess_mime_type(image_path)
         return await self._analyze_with_gemini(image_bytes, mime_type)
 
@@ -45,9 +48,21 @@ class VisionService:
         """Analyze raw image bytes for OCR + content classification."""
         return await self._analyze_with_gemini(image_bytes, mime_type)
 
+    @staticmethod
+    def _read_file(image_path: str) -> bytes:
+        with open(image_path, "rb") as f:
+            return f.read()
+
     async def _analyze_with_gemini(self, image_bytes: bytes, mime_type: str) -> VisionAnalysis:
-        """Call Gemini Flash API for multimodal analysis."""
+        """Call the Gemini Flash API for multimodal analysis.
+
+        In production, a missing key or a full model outage is an error, not a
+        graceful "unknown" result. In development we fall back to empty
+        analysis so the API is usable without credentials.
+        """
         if not settings.GOOGLE_GEMINI_API_KEY:
+            if _is_production():
+                raise RuntimeError("GOOGLE_GEMINI_API_KEY is not configured (APP_ENV=production)")
             logger.warning("No Gemini API key configured, returning empty analysis")
             return VisionAnalysis()
 
@@ -73,17 +88,16 @@ class VisionService:
             },
         }
 
-        models_to_try = [settings.GEMINI_MODEL, settings.GEMINI_MODEL_FALLBACK]
+        headers = {"x-goog-api-key": settings.GOOGLE_GEMINI_API_KEY}
 
-        for model in models_to_try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={settings.GOOGLE_GEMINI_API_KEY}"
+        for model in (settings.GEMINI_MODEL, settings.GEMINI_MODEL_FALLBACK):
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
             try:
                 async with httpx.AsyncClient(timeout=30.0) as client:
-                    response = await client.post(url, json=payload)
+                    response = await client.post(url, headers=headers, json=payload)
                     response.raise_for_status()
 
-                result = response.json()
-                text = result["candidates"][0]["content"]["parts"][0]["text"]
+                text = response.json()["candidates"][0]["content"]["parts"][0]["text"]
                 text = text.strip()
                 if text.startswith("```"):
                     text = text.split("\n", 1)[1]
@@ -100,10 +114,14 @@ class VisionService:
                     description=data.get("description", ""),
                     confidence=float(data.get("confidence", 0.5)),
                 )
-            except Exception as e:
-                logger.warning("Gemini model %s failed: %s", model, e)
+            except Exception as exc:
+                # Log the failure class only: the exception string can embed
+                # request URLs, which must never reach logs with headers attached.
+                logger.warning("Gemini model %s failed: %s", model, type(exc).__name__)
                 continue
 
+        if _is_production():
+            raise RuntimeError("All Gemini models failed")
         logger.error("All Gemini models failed")
         return VisionAnalysis(description="Vision analysis failed", confidence=0.0)
 

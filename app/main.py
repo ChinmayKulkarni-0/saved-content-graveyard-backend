@@ -4,15 +4,16 @@ import time
 import traceback
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy import text
 
 from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.logging import logger, setup_logging
 from app.db.seed import seed_default_users
-from app.db.session import init_db
+from app.db.session import engine, init_db
 from app.services.storage import storage_service
 
 _cleanup_task: asyncio.Task | None = None
@@ -104,7 +105,22 @@ app.include_router(api_router)
 
 @app.get("/health", tags=["health"])
 async def health_check():
-    return {"status": "healthy", "version": settings.APP_VERSION}
+    """Liveness probe: app is up and the database answers a trivial query."""
+    try:
+        async with asyncio.timeout(2):
+            async with engine.connect() as conn:
+                await conn.execute(text("SELECT 1"))
+    except Exception:
+        logger.warning("Health check: database unreachable", exc_info=True)
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "status": "degraded",
+                "version": settings.APP_VERSION,
+                "database": "unavailable",
+            },
+        )
+    return {"status": "healthy", "version": settings.APP_VERSION, "database": "ok"}
 
 
 if __name__ == "__main__":
