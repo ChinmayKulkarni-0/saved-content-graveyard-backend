@@ -10,7 +10,7 @@ from app.core.logging import ImageAction, log_image_event, logger
 from app.core.rate_limit import rate_limiter
 from app.db.session import get_db
 from app.models.user import User
-from app.schemas.pipeline import AnalyzeResponse, PipelineResult
+from app.schemas.pipeline import AnalyzeResponse
 from app.services.library import save_result
 from app.services.pipeline import ProcessingPipeline
 from app.services.storage import storage_service
@@ -166,7 +166,6 @@ async def analyze_batch(
             stored_name = f"upload{_EXT_BY_MIME[mime]}"
             tmp_path = await storage_service.save_temp_image(content, stored_name, user_id=str(user.id))
 
-            result: PipelineResult | None = None
             try:
                 pipeline = ProcessingPipeline()
                 result = await pipeline.process_image(tmp_path)
