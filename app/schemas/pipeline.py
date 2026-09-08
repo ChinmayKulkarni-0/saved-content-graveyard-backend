@@ -28,8 +28,8 @@ class PipelineResult(BaseModel):
     title: str
     description: str = Field(description="Short natural description, 1-2 sentences")
     confidence: float = Field(ge=0.0, le=1.0)
-    links: list[Link] = []
-    metadata: dict = {}
+    links: list[Link] = Field(default_factory=list)
+    metadata: dict = Field(default_factory=dict)
 
 
 class AnalyzeResponse(PipelineResult):

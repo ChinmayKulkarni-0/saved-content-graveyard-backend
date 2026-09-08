@@ -28,7 +28,12 @@ def to_schema(item: SavedResultModel) -> SavedResult:
     )
 
 
-async def save_result(db: AsyncSession, user: User, result: PipelineResult) -> SavedResultModel:
+async def save_result(
+    db: AsyncSession,
+    user: User,
+    result: PipelineResult,
+    thumbnail_url: str | None = None,
+) -> SavedResultModel:
     """Persist a PipelineResult card for the user and commit it.
 
     Raises the original SQLAlchemyError on failure after rolling back.
@@ -42,6 +47,7 @@ async def save_result(db: AsyncSession, user: User, result: PipelineResult) -> S
         confidence=result.confidence,
         links=[link.model_dump() for link in result.links],
         metadata_json=result.metadata,
+        thumbnail_url=thumbnail_url,
     )
     try:
         db.add(item)

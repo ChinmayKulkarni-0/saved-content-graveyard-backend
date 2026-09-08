@@ -40,7 +40,7 @@ class SavedResult(Base):
     metadata_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     thumbnail_url: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
+        DateTime(timezone=True), server_default=func.now(), index=True
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

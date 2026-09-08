@@ -96,13 +96,29 @@ Auth required (`Bearer` token). Ownership enforced: users can only read/delete
 their own saved cards. Auth errors follow the shared convention: `401` invalid/missing
 token, `404` token references a nonexistent user, `403` inactive user.
 
-- `GET /v1/library/?offset=0&limit=50` — newest first; `limit` max 100.
-  Response: array of `SavedResult` (see below). `X-Total-Count` header carries
-  the full count for pagination.
-- `POST /v1/library/` — save a result card; body is a `PipelineResult`.
-  → `201` with the created `SavedResult`.
+- `GET /v1/library/?offset=0&limit=20` — newest first (created_at DESC).
+  `limit` default 20, max 100. Response is a paginated envelope with `count`
+  (total for the user, unpaginated), `limit`, `offset`, and `results`:
+
+  ```json
+  {
+    "count": 5,
+    "limit": 20,
+    "offset": 0,
+    "results": [ {SavedResult} ]
+  }
+  ```
+
+  `X-Total-Count` header mirrors `count`.
+- `POST /v1/library/` — manually save a result card from history. Body is a
+  `SavedResultCreate`; **no AI pipeline is invoked**. `type`, `title`,
+  `description` required; `confidence` (default `0.0`), `links`, `metadata`,
+  `thumbnail_url` optional. → `201` with the created `SavedResult`.
 - `GET /v1/library/{item_id}` — single card → `200`, `404` if not owned/exists.
-- `DELETE /v1/library/{item_id}` — hard delete → `200 {"status": "deleted"}`.
+- `DELETE /v1/library/{item_id}` — hard delete → `200 {"message": "Result deleted successfully"}`.
+
+Errors: `401` missing token, `403` inactive user, `404` token references a
+nonexistent user, `422` invalid payload / malformed `{item_id}` UUID.
 
 `SavedResult`:
 

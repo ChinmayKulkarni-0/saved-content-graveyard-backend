@@ -125,14 +125,14 @@ class TestAnalyzeEndpoint:
 
         listed = await client.get("/v1/library/", headers=_headers(client.normal_user))
         assert listed.status_code == 200
-        assert any(item["id"] == data["saved_id"] for item in listed.json())
+        assert any(item["id"] == data["saved_id"] for item in listed.json()["results"])
 
     async def test_persisted_result_is_user_scoped(self, client):
         resp = await client.post("/v1/analyze/", files=_file(), headers=_headers(client.normal_user))
         saved_id = resp.json()["saved_id"]
 
         listed = await client.get("/v1/library/", headers=_headers(client.pro_user))
-        assert all(item["id"] != saved_id for item in listed.json())
+        assert all(item["id"] != saved_id for item in listed.json()["results"])
 
     async def test_rejects_non_image(self, client):
         resp = await client.post(
@@ -256,7 +256,7 @@ class TestBatchEndpoint:
 
         listed = await client.get("/v1/library/", headers=_headers(client.normal_user))
         assert listed.status_code == 200
-        listed_ids = {item["id"] for item in listed.json()}
+        listed_ids = {item["id"] for item in listed.json()["results"]}
         assert saved_ids.issubset(listed_ids)
 
     async def test_batch_results_are_user_scoped(self, client):
@@ -268,7 +268,7 @@ class TestBatchEndpoint:
         saved_id = resp.json()[0]["saved_id"]
 
         listed = await client.get("/v1/library/", headers=_headers(client.pro_user))
-        assert all(item["id"] != saved_id for item in listed.json())
+        assert all(item["id"] != saved_id for item in listed.json()["results"])
 
     async def test_batch_skips_invalid_files(self, client):
         resp = await client.post(
