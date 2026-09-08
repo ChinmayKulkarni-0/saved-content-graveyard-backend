@@ -21,7 +21,10 @@ class User(Base):
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     free_usage_count: Mapped[int] = mapped_column(Integer, default=0)
-    usage_month: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    usage_month: Mapped[int | None] = mapped_column(Integer, nullable=True, default=0)
+    usage_year: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, server_default="0", default=0
+    )
     is_pro: Mapped[bool] = mapped_column(Boolean, default=False)
 
 

@@ -303,15 +303,21 @@ class TestCleanupEndpoint:
 
 
 class TestRateLimitTiering:
-    async def test_free_user_is_rate_limited(self, client):
+    async def test_free_user_is_limited_by_monthly_quota(self, client):
         from app.core.config import settings as s
 
         headers = _headers(client.normal_user)
+        ok = 0
         for _ in range(s.RATE_LIMIT_FREE_TIER):
             resp = await client.post("/v1/analyze/", files=_file(), headers=headers)
-            assert resp.status_code in (200, 429)
-        resp = await client.post("/v1/analyze/", files=_file(), headers=headers)
-        assert resp.status_code == 429
+            assert resp.status_code in (200, 403)
+            if resp.status_code == 403:
+                assert resp.json()["detail"]["remaining"] == 0
+                break
+            ok += 1
+        # The monthly free quota (10) binds before the per-minute rate limit.
+        assert ok == 10
+        assert resp.status_code == 403
 
     async def test_pro_user_has_higher_limit(self, client):
         from app.core.config import settings as s

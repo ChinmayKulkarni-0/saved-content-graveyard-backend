@@ -75,11 +75,51 @@ The result card is persisted automatically to the user's library on success;
 Errors:
 - `400` — not an allowed image type / exceeds 10MB / not a valid image
 - `401` — invalid token
-- `403` — admin access required (cleanup endpoint only)
+- `403` — admin access required (cleanup endpoint only), or free monthly quota
+  exhausted (see Freemium usage below)
 - `429` — rate limit exceeded (free tier: 10/min, pro tier: 100/min in production)
 - `500` — processing failure
 
 The original image is deleted server-side immediately after processing (finally block).
+
+## Freemium Usage
+
+Free accounts get **10 analyses per calendar month** (UTC). Pro accounts
+(`is_pro`) have no monthly cap; Stripe billing is planned but `is_pro` is on
+the User model now so it can be toggled.
+
+Rules (applied by `/v1/analyze/` and `/v1/analyze/batch` **before** any image
+is read/processed):
+
+- The counter `free_usage_count` is keyed to `usage_month` / `usage_year`.
+- On the first analyze of a new calendar month, the counter resets to `0`.
+- Free users at `10` analyses for the month get `403`:
+
+  ```json
+  {"detail": {"message": "Free limit reached. Upgrade to Pro.", "limit": 10, "remaining": 0}}
+  ```
+
+- Each successful single analysis increments the counter by `1`; a batch
+  increments by the number of successfully processed files.
+
+`GET /v1/user/usage` — protected endpoint (active user). Frontend-friendly
+usage snapshot, read-only (never mutates/resets counters):
+
+```json
+{
+  "free_usage_count": 3,
+  "usage_month": 9,
+  "usage_year": 2026,
+  "is_pro": false,
+  "limit": 10,
+  "remaining": 7
+}
+```
+
+For pro users: `"limit": null`, `"remaining": "unlimited"`. If the stored
+`usage_month`/`usage_year` predates the current month, `remaining` is reported
+as the full allowance (`10`) even before the next analyze resets the counters.
+Auth errors follow the shared convention (`401`/`404`/`403`).
 
 ## Analyze Batch
 

@@ -14,6 +14,7 @@ from app.schemas.pipeline import AnalyzeResponse
 from app.services.library import save_result
 from app.services.pipeline import ProcessingPipeline
 from app.services.storage import storage_service
+from app.services.usage import enforce_free_monthly_quota, increment_free_usage
 
 router = APIRouter()
 
@@ -84,6 +85,7 @@ async def analyze_screenshot(
     db: AsyncSession = Depends(get_db),
 ):
     await _apply_rate_limit(request, user)
+    await enforce_free_monthly_quota(user, db)
 
     content, mime = await _read_and_validate(file)
     filename = file.filename or "upload"
@@ -118,6 +120,7 @@ async def analyze_screenshot(
             duration_ms=elapsed_ms,
             detail=f"type={result.type.value} saved_id={saved.id}",
         )
+        await increment_free_usage(user, db)
         return AnalyzeResponse(saved_id=saved.id, **result.model_dump())
 
     except HTTPException:
@@ -151,6 +154,7 @@ async def analyze_batch(
     db: AsyncSession = Depends(get_db),
 ):
     await _apply_rate_limit(request, user)
+    await enforce_free_monthly_quota(user, db)
 
     if len(files) > MAX_BATCH_SIZE:
         raise HTTPException(
@@ -189,6 +193,8 @@ async def analyze_batch(
         len(results),
         len(files),
     )
+    if results:
+        await increment_free_usage(user, db, count=len(results))
     return results
 
 
